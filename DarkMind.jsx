@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { ALL_SEGMENTS, findCheckout, isBustThrow, sumThrows } from "./src/scoringEngine.js";
 
 const ORDER = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const RAD = {
@@ -33,50 +34,15 @@ function buildBoard(cx, cy) {
     const singleColor = even ? "#16181d" : "#e7ddc2";
     const hitColor = even ? "#b1332c" : "#1f7a48";
     wedges.push({ key: "D" + num, value: num * 2, isDouble: true, d: wedgePath(cx, cy, RAD.doubleInner, RAD.doubleOuter, a0, a1), fill: hitColor });
-    wedges.push({ key: "S" + num + "o", value: num, isDouble: false, d: wedgePath(cx, cy, RAD.tripleOuter, RAD.doubleInner, a0, a1), fill: singleColor });
+    wedges.push({ key: "S" + num + "o", label: "S" + num, value: num, isDouble: false, d: wedgePath(cx, cy, RAD.tripleOuter, RAD.doubleInner, a0, a1), fill: singleColor });
     wedges.push({ key: "T" + num, value: num * 3, isDouble: false, d: wedgePath(cx, cy, RAD.tripleInner, RAD.tripleOuter, a0, a1), fill: hitColor });
-    wedges.push({ key: "S" + num + "i", value: num, isDouble: false, d: wedgePath(cx, cy, RAD.bullOuter, RAD.tripleInner, a0, a1), fill: singleColor });
+    wedges.push({ key: "S" + num + "i", label: "S" + num, value: num, isDouble: false, d: wedgePath(cx, cy, RAD.bullOuter, RAD.tripleInner, a0, a1), fill: singleColor });
   });
   const labels = ORDER.map((num, k) => {
     const pos = polar(cx, cy, RAD.doubleOuter + 13, k * 18);
     return { num, x: pos.x, y: pos.y };
   });
   return { wedges, labels };
-}
-
-const ALL_SEGMENTS = (() => {
-  const segs = [];
-  for (let n = 1; n <= 20; n++) {
-    segs.push({ label: "S" + n, value: n });
-    segs.push({ label: "D" + n, value: n * 2, isDouble: true });
-    segs.push({ label: "T" + n, value: n * 3 });
-  }
-  segs.push({ label: "Bull", value: 25 });
-  segs.push({ label: "D-Bull", value: 50, isDouble: true });
-  return segs;
-})();
-
-function findCheckout(remaining, dartsLeft) {
-  if (remaining <= 1 || remaining > 170 || dartsLeft <= 0) return null;
-  const doubles = ALL_SEGMENTS.filter((s) => s.isDouble);
-  for (const d of doubles) if (d.value === remaining) return [d.label];
-  if (dartsLeft >= 2) {
-    for (const a of ALL_SEGMENTS) {
-      for (const d of doubles) {
-        if (a.value + d.value === remaining) return [a.label, d.label];
-      }
-    }
-  }
-  if (dartsLeft >= 3) {
-    for (const a of ALL_SEGMENTS) {
-      for (const b of ALL_SEGMENTS) {
-        for (const d of doubles) {
-          if (a.value + b.value + d.value === remaining) return [a.label, b.label, d.label];
-        }
-      }
-    }
-  }
-  return null;
 }
 
 function qualityLabel(total) {
@@ -106,6 +72,17 @@ const MODE_TILES = [
   { key: "countup", label: "Count up", desc: "See how high you can go", playable: false },
 ];
 
+const SCORE_OPTIONS = [
+  { key: "manual", label: "Manual scoring", desc: "Tap the virtual dartboard to score as normal.", playable: true },
+  { key: "liv", label: "Liv scoring", desc: "Keep the camera visible after calibration and score from the live board image.", playable: true },
+];
+const LOCAL_SCORING_OPTIONS = [
+  { key: "manual", label: "Virtual Board", desc: "Use the existing manual dartboard scoring.", playable: true },
+  { key: "liv", label: "Camera", desc: "Use the live camera scoring flow.", playable: true },
+  { key: "voice", label: "Voice", desc: "Voice scoring is coming next.", playable: true },
+];
+const CALIBRATION_STORAGE_KEY = "darkmind_board_calibration";
+
 function emptyProfile(name) {
   return { name, gamesPlayed: 0, gamesWon: 0, totalPoints: 0, totalDarts: 0, total180s: 0, bestCheckout: 0, history: [] };
 }
@@ -114,15 +91,211 @@ function initPlayer(name, startScore) {
   return { name, remaining: startScore, dartsThrown: 0, pointsScored: 0 };
 }
 
+function emptyPlayerStats(name) {
+  return {
+    name,
+    gamesPlayed: 0,
+    wins: 0,
+    losses: 0,
+    legsPlayed: 0,
+    legsWon: 0,
+    totalPoints: 0,
+    totalDarts: 0,
+    total180s: 0,
+    total140Plus: 0,
+    total100Plus: 0,
+    checkoutAttempts: 0,
+    checkoutHits: 0,
+    highestCheckout: 0,
+    bestLegDarts: null,
+    firstNinePoints: 0,
+    firstNineDarts: 0,
+  };
+}
+
+function createMatchLog(name) {
+  return {
+    name,
+    darts: [],
+    turnTotals: [],
+    checkoutAttempts: 0,
+    checkoutHits: 0,
+  };
+}
+
+function buildStatsStore() {
+  return { players: {}, games: [] };
+}
+
+function loadStatsStore() {
+  if (typeof window === "undefined") return buildStatsStore();
+  try {
+    const raw = window.localStorage.getItem("darkmind_stats_store_v1");
+    if (!raw) return buildStatsStore();
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return {
+        players: parsed.players || {},
+        games: Array.isArray(parsed.games) ? parsed.games : [],
+      };
+    }
+  } catch (e) {}
+  return buildStatsStore();
+}
+
+function saveStatsStore(store) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem("darkmind_stats_store_v1", JSON.stringify(store));
+  } catch (e) {}
+}
+
+function getPlayerStatsRecord(store, playerName) {
+  const name = (playerName || "").trim() || "Player";
+  const existing = store.players[name];
+  if (existing) return existing;
+  const record = emptyPlayerStats(name);
+  store.players[name] = record;
+  return record;
+}
+
+function getAverage(points, darts) {
+  if (!darts) return 0;
+  return (points / darts) * 3;
+}
+
+function getFirstNineAverage(darts) {
+  if (!darts || darts.length === 0) return 0;
+  const sample = darts.slice(0, 9);
+  const total = sample.reduce((sum, value) => sum + value, 0);
+  return total / sample.length;
+}
+
+function normalizeGameRecord(game) {
+  return {
+    id: game.id || Date.now() + Math.random(),
+    date: game.date || new Date().toISOString(),
+    gameType: game.gameType || "501",
+    players: game.players || [],
+    winnerName: game.winnerName || "",
+    winnerIdx: game.winnerIdx ?? 0,
+    finishValue: game.finishValue || 0,
+    result: game.result || "",
+  };
+}
+
+function normalizePlayerNames(names) {
+  return names
+    .map((name, index) => {
+      const cleaned = (name || "").trim();
+      return cleaned || `Player ${index + 1}`;
+    })
+    .filter((name, index, arr) => name || index < arr.length);
+}
+
 function initials(name) {
   return (name || "?").trim().slice(0, 2).toUpperCase();
+}
+
+function formatShortDate(value) {
+  if (!value) return "—";
+  try {
+    return new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  } catch (e) {
+    return value;
+  }
+}
+
+function formatPercent(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0%";
+  return `${Math.round(value)}%`;
+}
+
+function formatAverage(value) {
+  if (!Number.isFinite(value) || value <= 0) return "0.0";
+  return value.toFixed(1);
+}
+
+function saveCalibrationToLocalStorage(calibration) {
+  try {
+    window.localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(calibration));
+  } catch (e) {}
+}
+
+function getCalibrationGeometry(calibrationPoints, frameWidth, frameHeight) {
+  if (!calibrationPoints || calibrationPoints.length < 2) return null;
+  const bull = {
+    x: (calibrationPoints[0].x / 100) * frameWidth,
+    y: (calibrationPoints[0].y / 100) * frameHeight,
+  };
+  const edge20 = {
+    x: (calibrationPoints[1].x / 100) * frameWidth,
+    y: (calibrationPoints[1].y / 100) * frameHeight,
+  };
+  const dx = edge20.x - bull.x;
+  const dy = edge20.y - bull.y;
+  const scale = Math.hypot(dx, dy) / RAD.doubleOuter;
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  return {
+    center: bull,
+    scale,
+    angle: Math.atan2(dy, dx),
+  };
+}
+
+function mapImagePointToThrow(point, geometry, frameWidth, frameHeight) {
+  if (!geometry || !point) return null;
+  const dx = point.x - geometry.center.x;
+  const dy = point.y - geometry.center.y;
+  const radius = Math.hypot(dx, dy) / geometry.scale;
+  const angle = Math.atan2(dy, dx) - geometry.angle;
+  const angleDeg = ((angle * 180) / Math.PI + 360) % 360;
+  const signedAngle = angleDeg > 180 ? angleDeg - 360 : angleDeg;
+  const wedgeIndex = ((Math.floor((signedAngle + 9) / 18) % ORDER.length) + ORDER.length) % ORDER.length;
+  const segmentNumber = ORDER[wedgeIndex];
+
+  let label = "Miss";
+  let value = 0;
+  let isDouble = false;
+
+  if (radius <= RAD.bullInner) {
+    label = "D-Bull";
+    value = 50;
+    isDouble = true;
+  } else if (radius <= RAD.bullOuter) {
+    label = "25 / Outer Bull";
+    value = 25;
+  } else if (radius <= RAD.tripleInner) {
+    label = "S" + segmentNumber;
+    value = segmentNumber;
+  } else if (radius <= RAD.tripleOuter) {
+    label = "T" + segmentNumber;
+    value = segmentNumber * 3;
+  } else if (radius <= RAD.doubleInner) {
+    label = "S" + segmentNumber;
+    value = segmentNumber;
+  } else if (radius <= RAD.doubleOuter) {
+    label = "D" + segmentNumber;
+    value = segmentNumber * 2;
+    isDouble = true;
+  } else if (radius <= RAD.missOuter) {
+    label = "Miss";
+    value = 0;
+  }
+
+  return { label, value, isDouble, x: point.x / frameWidth * 100, y: point.y / frameHeight * 100 };
 }
 
 export default function DartMind() {
   const [screen, setScreen] = useState("loading");
   const [profile, setProfile] = useState(null);
+  const [statsStore, setStatsStore] = useState(() => loadStatsStore());
   const [nameInput, setNameInput] = useState("");
   const [gameConfig, setGameConfig] = useState(null);
+  const [pendingMode, setPendingMode] = useState(null);
+  const [localPlayers, setLocalPlayers] = useState(["Player 1", "Player 2"]);
+  const [localGameMode, setLocalGameMode] = useState(501);
+  const [localScoringType, setLocalScoringType] = useState("manual");
   const [calibrating, setCalibrating] = useState(false);
   const [calibrated, setCalibrated] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -133,15 +306,28 @@ export default function DartMind() {
   const [flash, setFlash] = useState(null);
   const [gameOver, setGameOver] = useState(null);
   const [user180s, setUser180s] = useState(0);
+  const [visitNumber, setVisitNumber] = useState(1);
   const [challengeTab, setChallengeTab] = useState("daily");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [cameraStarted, setCameraStarted] = useState(false);
   const [calibrationStep, setCalibrationStep] = useState(0);
   const [calibrationPoints, setCalibrationPoints] = useState([]);
+  const [savedCalibration, setSavedCalibration] = useState(null);
+  const [detectedPoint, setDetectedPoint] = useState(null);
+  const [pendingScore, setPendingScore] = useState(null);
+  const matchLogsRef = useRef([]);
   const videoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const boardRef = useRef(null);
+  const detectionCanvasRef = useRef(null);
+  const detectionRef = useRef({
+    prevFrame: null,
+    isTracking: false,
+    trackingStart: 0,
+    pendingPoint: null,
+    lastScoredAt: 0,
+  });
   const cx = 200;
   const cy = 200;
   const board = useMemo(() => buildBoard(cx, cy), []);
@@ -161,6 +347,20 @@ export default function DartMind() {
       setScreen(p ? "home" : "login");
       if (p) setProfile({ history: [], ...p });
     })();
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CALIBRATION_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.points) && parsed.points.length >= 2) {
+        setSavedCalibration(parsed);
+        setCalibrationPoints(parsed.points);
+        setCalibrationStep(2);
+        setCalibrated(true);
+      }
+    } catch (e) {}
   }, []);
 
   async function saveProfile(p) {
@@ -188,25 +388,78 @@ export default function DartMind() {
     setScreen("login");
   }
 
-  function startLocalGame(mode) {
+  function startLocalGame(mode, scoringType = "manual") {
     const startScore = mode === "301" ? 301 : 501;
-    setGameConfig({ mode, opponentName: "Alex", online: false, startScore });
-    setCalibrated(false);
-    setCalibrationStep(0);
-    setCalibrationPoints([]);
+    setGameConfig({ mode, opponentName: "Alex", online: false, startScore, scoringType, players: [profile?.name || "You", "Alex"] });
+    setPendingMode(null);
     setCameraError("");
-    setScreen("calibrate");
+    if (scoringType === "liv") {
+      setScreen("calibrate");
+      return;
+    }
+    beginGame({
+      mode,
+      startScore,
+      scoringType,
+      players: [profile?.name || "You", "Alex"],
+    });
+  }
+
+  function addLocalPlayer() {
+    if (localPlayers.length >= 8) return;
+    setLocalPlayers((current) => [...current, `Player ${current.length + 1}`]);
+  }
+
+  function removeLocalPlayer(index) {
+    if (localPlayers.length <= 1) return;
+    setLocalPlayers((current) => current.filter((_, i) => i !== index));
+  }
+
+  function updateLocalPlayer(index, value) {
+    setLocalPlayers((current) => current.map((player, playerIndex) => (playerIndex === index ? value : player)));
+  }
+
+  function startLocalMultiplayerGame() {
+    const players = normalizePlayerNames(localPlayers);
+    const startScore = localGameMode === 301 ? 301 : 501;
+    const nextGameConfig = {
+      mode: String(localGameMode),
+      opponentName: players[1] || players[0],
+      online: false,
+      startScore,
+      scoringType: localScoringType,
+      players,
+    };
+
+    setGameConfig(nextGameConfig);
+    setCameraError("");
+    setPendingMode(null);
+
+    if (localScoringType === "liv") {
+      setScreen("calibrate");
+      return;
+    }
+
+    const preparedPlayers = players.map((name) => initPlayer(name, startScore));
+    setPlayers(preparedPlayers);
+    setTurnIndex(0);
+    setTurnThrows([]);
+    setBustPending(false);
+    setGameOver(null);
+    setUser180s(0);
+    setDetectedPoint(null);
+    setPendingScore(null);
+    setVisitNumber(1);
+    setScreen("game");
   }
 
   function startOnlineSearch() {
     setSearching(true);
     setTimeout(() => {
       const opp = LOBBY[Math.floor(Math.random() * LOBBY.length)];
-      setGameConfig({ mode: "501", opponentName: opp.name, online: true, startScore: 501 });
+      setGameConfig({ mode: "501", opponentName: opp.name, online: true, startScore: 501, scoringType: "manual" });
       setSearching(false);
-      setCalibrated(false);
-      setCalibrationStep(0);
-      setCalibrationPoints([]);
+      setPendingMode(null);
       setCameraError("");
       setScreen("calibrate");
     }, 1600);
@@ -247,9 +500,18 @@ export default function DartMind() {
   }
 
   useEffect(() => {
-    if (screen !== "calibrate") stopCamera();
-    return () => stopCamera();
-  }, [screen]);
+    const keepCameraForLivGame = screen === "game" && gameConfig?.scoringType === "liv";
+    if (screen === "calibrate" || keepCameraForLivGame) return;
+    stopCamera();
+  }, [screen, gameConfig?.scoringType]);
+
+  useEffect(() => {
+    if (!videoRef.current || !cameraStreamRef.current) return;
+    if (screen === "calibrate" || (screen === "game" && gameConfig?.scoringType === "liv")) {
+      videoRef.current.srcObject = cameraStreamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [screen, cameraReady, gameConfig?.scoringType]);
 
   function playToneSequence(notes, duration = 0.12) {
     try {
@@ -297,19 +559,33 @@ export default function DartMind() {
     if (calibrationStep < 2) return;
     setCalibrating(true);
     setTimeout(() => {
+      const calibration = {
+        points: calibrationPoints,
+        savedAt: Date.now(),
+      };
+      setSavedCalibration(calibration);
+      saveCalibrationToLocalStorage(calibration);
       setCalibrating(false);
       setCalibrated(true);
       playToneSequence([523, 659, 784]);
     }, 650);
   }
 
-  function beginGame() {
-    setPlayers([initPlayer(profile.name, gameConfig.startScore), initPlayer(gameConfig.opponentName, gameConfig.startScore)]);
+  function beginGame(overrides = {}) {
+    const startScore = overrides.startScore ?? gameConfig?.startScore ?? 501;
+    const playerNames = overrides.players ?? gameConfig?.players ?? [profile?.name || "You", gameConfig?.opponentName || "Alex"];
+    const playersToUse = playerNames.map((name) => initPlayer(name, startScore));
+
+    matchLogsRef.current = playersToUse.map((player) => createMatchLog(player.name));
+    setPlayers(playersToUse);
     setTurnIndex(0);
     setTurnThrows([]);
     setBustPending(false);
     setGameOver(null);
     setUser180s(0);
+    setDetectedPoint(null);
+    setPendingScore(null);
+    setVisitNumber(1);
     setScreen("game");
   }
 
@@ -325,10 +601,22 @@ export default function DartMind() {
     return { x: loc.x, y: loc.y };
   }
 
-  function applyTurnScore(pIdx, thrown, totalOverride, isWin, finishValue) {
-    const turnTotal = totalOverride != null ? totalOverride : thrown.reduce((s, t) => s + t.value, 0);
-    const list = [...players];
-    list[pIdx] = { ...list[pIdx], remaining: list[pIdx].remaining - turnTotal, dartsThrown: list[pIdx].dartsThrown + thrown.length, pointsScored: list[pIdx].pointsScored + turnTotal };
+  function applyTurnScore(pIdx, thrown, totalOverride, isWin, finishValue, basePlayers = players) {
+    const turnTotal = totalOverride != null ? totalOverride : sumThrows(thrown);
+    const list = [...basePlayers];
+    const playerLog = matchLogsRef.current[pIdx] || createMatchLog(list[pIdx].name);
+    if (playerLog) {
+      playerLog.turnTotals.push(turnTotal);
+      playerLog.total180s = turnTotal === 180 ? (playerLog.total180s || 0) + 1 : playerLog.total180s || 0;
+      playerLog.total140Plus = turnTotal >= 140 ? (playerLog.total140Plus || 0) + 1 : playerLog.total140Plus || 0;
+      playerLog.total100Plus = turnTotal >= 100 ? (playerLog.total100Plus || 0) + 1 : playerLog.total100Plus || 0;
+    }
+    list[pIdx] = {
+      ...list[pIdx],
+      remaining: list[pIdx].remaining - turnTotal,
+      dartsThrown: list[pIdx].dartsThrown || 0,
+      pointsScored: list[pIdx].pointsScored + turnTotal,
+    };
     setPlayers(list);
     if (turnTotal === 180 && !isWin) {
       setFlash("180");
@@ -347,27 +635,97 @@ export default function DartMind() {
     if (gameOver || !players || bustPending || turnThrows.length >= 3) return;
     const pIdx = turnIndex;
     const committedRemaining = players[pIdx].remaining;
-    const turnSoFar = turnThrows.reduce((s, t) => s + t.value, 0);
+    const turnSoFar = sumThrows(turnThrows);
     const liveRemaining = committedRemaining - turnSoFar;
     const newLive = liveRemaining - throwObj.value;
     const newTurnThrows = [...turnThrows, throwObj];
-    const isBust = newLive < 0 || newLive === 1 || (newLive === 0 && !throwObj.isDouble);
+    const playerLog = matchLogsRef.current[pIdx] || createMatchLog(players[pIdx].name);
+    const isBust = isBustThrow({ currentRemaining: committedRemaining, turnThrows, nextThrow: throwObj });
 
+    playerLog.darts.push(throwObj.value);
+
+    const updatedPlayers = [...players];
+    updatedPlayers[pIdx] = {
+      ...updatedPlayers[pIdx],
+      dartsThrown: updatedPlayers[pIdx].dartsThrown + 1,
+    };
+    setPlayers(updatedPlayers);
     setTurnThrows(newTurnThrows);
 
     if (isBust) {
       setBustPending(true);
       return;
     }
+
     if (newLive === 0) {
       const turnTotal = turnSoFar + throwObj.value;
-      applyTurnScore(pIdx, newTurnThrows, turnTotal, true, throwObj.value);
+      playerLog.checkoutHits += 1;
+      applyTurnScore(pIdx, newTurnThrows, turnTotal, true, throwObj.value, updatedPlayers);
     }
   }
 
   function handleBoardClick(evt, label, value, isDouble) {
     const pt = getSvgPoint(evt);
     applyThrow({ label, value, isDouble: !!isDouble, x: pt.x, y: pt.y });
+  }
+
+  function captureReferenceFrame() {
+    if (!videoRef.current || !cameraReady || !videoRef.current.videoWidth) return;
+    const canvas = detectionCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const sampleWidth = 160;
+    const sampleHeight = 120;
+    canvas.width = sampleWidth;
+    canvas.height = sampleHeight;
+    ctx.drawImage(videoRef.current, 0, 0, sampleWidth, sampleHeight);
+    const imageData = ctx.getImageData(0, 0, sampleWidth, sampleHeight);
+    detectionRef.current.referenceFrame = {
+      data: new Uint8ClampedArray(imageData.data),
+      width: sampleWidth,
+      height: sampleHeight,
+    };
+    detectionRef.current.pendingPoint = null;
+    setDetectedPoint(null);
+    setPendingScore(null);
+  }
+
+  function scheduleReferenceCapture() {
+    setTimeout(() => {
+      captureReferenceFrame();
+    }, 180);
+  }
+
+  function confirmDetectedThrow() {
+    if (!pendingScore) return;
+    const throwObj = {
+      label: pendingScore.label,
+      value: pendingScore.value,
+      isDouble: !!pendingScore.isDouble,
+      x: pendingScore.point.x,
+      y: pendingScore.point.y,
+    };
+    applyThrow(throwObj);
+    setPendingScore(null);
+    setDetectedPoint(null);
+    scheduleReferenceCapture();
+  }
+
+  function handleDetectedThrow(point) {
+    if (!savedCalibration || !videoRef.current || !players || !gameConfig || gameConfig.scoringType !== "liv") return;
+    const frameWidth = videoRef.current.videoWidth || videoRef.current.clientWidth || 360;
+    const frameHeight = videoRef.current.videoHeight || videoRef.current.clientHeight || 240;
+    const geometry = getCalibrationGeometry(savedCalibration.points, frameWidth, frameHeight);
+    if (!geometry) return;
+    const mapped = mapImagePointToThrow(point, geometry, frameWidth, frameHeight);
+    if (!mapped || mapped.value === 0) return;
+    setDetectedPoint(mapped);
+    setPendingScore({
+      label: mapped.label,
+      value: mapped.value,
+      isDouble: !!mapped.isDouble,
+      point,
+    });
   }
 
   function handleMissButton() {
@@ -386,22 +744,93 @@ export default function DartMind() {
     if (bustPending) {
       setBustPending(false);
       setTurnThrows([]);
-      setTurnIndex(pIdx === 0 ? 1 : 0);
+      setTurnIndex((pIdx + 1) % players.length);
+      setVisitNumber((value) => value + 1);
       return;
     }
     if (turnThrows.length === 0) return;
     applyTurnScore(pIdx, turnThrows);
     setTurnThrows([]);
-    setTurnIndex(pIdx === 0 ? 1 : 0);
+    setTurnIndex((pIdx + 1) % players.length);
+    setVisitNumber((value) => value + 1);
+  }
+
+  function persistCompletedGame(list, winnerIdx, finishValue) {
+    const playerSummaries = list.map((player, index) => {
+      const playerLog = matchLogsRef.current[index] || createMatchLog(player.name);
+      const firstNineAverage = getFirstNineAverage(playerLog.darts);
+      const average = getAverage(player.pointsScored, player.dartsThrown);
+      const checkoutAttempts = playerLog.checkoutAttempts || 0;
+      const checkoutHits = playerLog.checkoutHits || 0;
+      const total180s = playerLog.turnTotals.filter((turnTotal) => turnTotal === 180).length;
+      const total140Plus = playerLog.turnTotals.filter((turnTotal) => turnTotal >= 140).length;
+      const total100Plus = playerLog.turnTotals.filter((turnTotal) => turnTotal >= 100).length;
+      const highestCheckout = index === winnerIdx ? finishValue : 0;
+
+      return {
+        name: player.name,
+        result: index === winnerIdx ? "won" : "lost",
+        average,
+        firstNineAverage,
+        highestCheckout,
+        checkoutAttempts,
+        checkoutHits,
+        total180s,
+        total140Plus,
+        total100Plus,
+        pointsScored: player.pointsScored,
+        dartsThrown: player.dartsThrown,
+      };
+    });
+
+    const gameRecord = normalizeGameRecord({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      date: new Date().toISOString(),
+      gameType: gameConfig?.mode || "501",
+      players: playerSummaries,
+      winnerName: list[winnerIdx]?.name || "",
+      winnerIdx,
+      finishValue,
+      result: `${list[winnerIdx]?.name || "Player"} won`,
+    });
+
+    const nextStore = loadStatsStore();
+    nextStore.games = [gameRecord, ...nextStore.games].slice(0, 250);
+
+    playerSummaries.forEach((summary) => {
+      const record = getPlayerStatsRecord(nextStore, summary.name);
+      record.gamesPlayed += 1;
+      record.wins += summary.result === "won" ? 1 : 0;
+      record.losses += summary.result === "lost" ? 1 : 0;
+      record.legsPlayed += 1;
+      record.legsWon += summary.result === "won" ? 1 : 0;
+      record.totalPoints += summary.pointsScored;
+      record.totalDarts += summary.dartsThrown;
+      record.total180s += summary.total180s;
+      record.total140Plus += summary.total140Plus;
+      record.total100Plus += summary.total100Plus;
+      record.checkoutAttempts += summary.checkoutAttempts;
+      record.checkoutHits += summary.checkoutHits;
+      record.highestCheckout = Math.max(record.highestCheckout, summary.highestCheckout);
+      record.bestLegDarts = record.bestLegDarts == null ? summary.dartsThrown : Math.min(record.bestLegDarts, summary.dartsThrown);
+      record.firstNinePoints += summary.firstNineAverage * Math.min(9, summary.dartsThrown || 0);
+      record.firstNineDarts += Math.min(9, summary.dartsThrown || 0);
+    });
+
+    saveStatsStore(nextStore);
+    setStatsStore(nextStore);
+    return gameRecord;
   }
 
   function finishGame(winnerIdx, list, finishValue) {
     setGameOver({ winnerIdx, finishValue });
-    if (!profile) return;
+    const gameRecord = persistCompletedGame(list, winnerIdx, finishValue);
+
+    if (!profile) return gameRecord;
     const you = list[0];
     const won = winnerIdx === 0;
     const gameAvg = you.dartsThrown > 0 ? Math.round(((you.pointsScored / you.dartsThrown) * 3) * 10) / 10 : 0;
-    const history = [...(profile.history || []), { avg: gameAvg }].slice(-10);
+    const history = [...(profile.history || []), { avg: gameAvg, date: gameRecord.date }].slice(-10);
     saveProfile({
       ...profile,
       gamesPlayed: profile.gamesPlayed + 1,
@@ -412,11 +841,177 @@ export default function DartMind() {
       bestCheckout: won ? Math.max(profile.bestCheckout, finishValue) : profile.bestCheckout,
       history,
     });
+    return gameRecord;
   }
 
   const currentPlayer = players ? players[turnIndex] : null;
   const dartsLeftInTurn = 3 - turnThrows.length;
-  const turnSoFarValue = turnThrows.reduce((s, t) => s + t.value, 0);
+
+  useEffect(() => {
+    if (!videoRef.current || !cameraReady || screen !== "game" || gameConfig?.scoringType !== "liv" || !savedCalibration || !cameraStreamRef.current) return;
+
+    const sampleCanvas = detectionCanvasRef.current;
+    if (!sampleCanvas) return;
+    const ctx = sampleCanvas.getContext("2d", { willReadFrequently: true });
+    const sampleWidth = 160;
+    const sampleHeight = 120;
+    sampleCanvas.width = sampleWidth;
+    sampleCanvas.height = sampleHeight;
+
+    let rafId = 0;
+    const state = detectionRef.current;
+    state.prevFrame = null;
+    state.isTracking = false;
+    state.trackingStart = 0;
+    state.pendingPoint = null;
+
+    function getComponentStats(startIdx) {
+      const stack = [startIdx];
+      const visited = new Uint8Array(sampleWidth * sampleHeight);
+      visited[startIdx] = 1;
+
+      let minX = sampleWidth;
+      let minY = sampleHeight;
+      let maxX = -1;
+      let maxY = -1;
+      let count = 0;
+      let sumX = 0;
+      let sumY = 0;
+
+      while (stack.length > 0) {
+        const idx = stack.pop();
+        const x = idx % sampleWidth;
+        const y = Math.floor(idx / sampleWidth);
+        count += 1;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+        sumX += x;
+        sumY += y;
+
+        const neighbors = [
+          idx - 1,
+          idx + 1,
+          idx - sampleWidth,
+          idx + sampleWidth,
+        ];
+
+        for (const next of neighbors) {
+          if (next < 0 || next >= sampleWidth * sampleHeight) continue;
+          const nx = next % sampleWidth;
+          const ny = Math.floor(next / sampleWidth);
+          if (nx < 0 || ny < 0 || nx >= sampleWidth || ny >= sampleHeight) continue;
+          if (state.mask[next] && !visited[next]) {
+            visited[next] = 1;
+            stack.push(next);
+          }
+        }
+      }
+
+      const width = maxX - minX + 1;
+      const height = maxY - minY + 1;
+      const area = count;
+      const aspect = Math.max(width, height) / Math.max(Math.min(width, height), 1);
+      const density = area / (width * height);
+
+      return {
+        count,
+        width,
+        height,
+        aspect,
+        density,
+        cx: sumX / count,
+        cy: sumY / count,
+      };
+    }
+
+    function analyze() {
+      if (!videoRef.current || videoRef.current.readyState < 2) {
+        rafId = requestAnimationFrame(analyze);
+        return;
+      }
+
+      ctx.drawImage(videoRef.current, 0, 0, sampleWidth, sampleHeight);
+      const frame = ctx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+
+      if (!state.referenceFrame) {
+        state.referenceFrame = { data: new Uint8ClampedArray(frame), width: sampleWidth, height: sampleHeight };
+        state.pendingPoint = null;
+        rafId = requestAnimationFrame(analyze);
+        return;
+      }
+
+      const ref = state.referenceFrame.data;
+      state.mask = new Uint8Array(sampleWidth * sampleHeight);
+      let changedCount = 0;
+      let totalDelta = 0;
+
+      for (let i = 0; i < frame.length; i += 4) {
+        const idx = i / 4;
+        const dr = Math.abs(frame[i] - ref[i]);
+        const dg = Math.abs(frame[i + 1] - ref[i + 1]);
+        const db = Math.abs(frame[i + 2] - ref[i + 2]);
+        const delta = (dr + dg + db) / 3;
+        if (delta > 24) {
+          state.mask[idx] = 1;
+          changedCount += 1;
+          totalDelta += delta;
+        }
+      }
+
+      const motionRatio = changedCount / (sampleWidth * sampleHeight);
+
+      if (motionRatio < 0.003 || changedCount < 30) {
+        rafId = requestAnimationFrame(analyze);
+        return;
+      }
+
+      const visited = new Uint8Array(sampleWidth * sampleHeight);
+      let bestRegion = null;
+      let bestScore = -1;
+
+      for (let i = 0; i < state.mask.length; i += 1) {
+        if (!state.mask[i] || visited[i]) continue;
+
+        const stats = getComponentStats(i);
+        if (stats.count < 8 || stats.width < 3 || stats.height < 2) continue;
+        if (stats.width > sampleWidth * 0.8 || stats.height > sampleHeight * 0.8) continue;
+        const aspect = Math.max(stats.width, stats.height) / Math.max(Math.min(stats.width, stats.height), 1);
+        if (aspect < 1.7) continue;
+
+        const score = Math.min(1, stats.count / 120) * 0.6 + Math.min(1, aspect / 5) * 0.4;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestRegion = {
+            ...stats,
+            score,
+          };
+        }
+      }
+
+      if (bestRegion && bestRegion.score >= 0.4) {
+        const frameWidth = videoRef.current.videoWidth || videoRef.current.clientWidth || 360;
+        const frameHeight = videoRef.current.videoHeight || videoRef.current.clientHeight || 240;
+        const point = {
+          x: (bestRegion.cx / sampleWidth) * frameWidth,
+          y: (bestRegion.cy / sampleHeight) * frameHeight,
+        };
+        handleDetectedThrow(point);
+      } else {
+        setPendingScore(null);
+        setDetectedPoint(null);
+      }
+
+      rafId = requestAnimationFrame(analyze);
+    }
+
+    rafId = requestAnimationFrame(analyze);
+
+    return () => cancelAnimationFrame(rafId);
+  }, [cameraReady, gameConfig?.scoringType, screen, savedCalibration, players, turnThrows.length]);
+  const turnSoFarValue = sumThrows(turnThrows);
   const liveRemainingForCurrent = currentPlayer ? currentPlayer.remaining - turnSoFarValue : 0;
   const checkout = currentPlayer && !gameOver && !bustPending ? findCheckout(liveRemainingForCurrent, dartsLeftInTurn) : null;
   const avg = profile && profile.totalDarts > 0 ? (profile.totalPoints / profile.totalDarts) * 3 : 0;
@@ -521,6 +1116,25 @@ export default function DartMind() {
         .dm-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
         .dm-tab { flex: 1; text-align: center; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 12.5px; color: var(--text-dim); cursor: pointer; background: var(--panel); }
         .dm-tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+        .dm-stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
+        .dm-stats-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+        .dm-stats-card .label { font-size: 11px; color: var(--text-dim); margin-bottom: 4px; }
+        .dm-stats-card .value { font-family: 'Bebas Neue', sans-serif; font-size: 24px; line-height: 1; color: var(--ink); }
+        .dm-trend-box .dm-stats-list { display: flex; flex-direction: column; gap: 8px; }
+        .dm-form-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
+        .dm-form-row .left { display: flex; flex-direction: column; gap: 2px; }
+        .dm-form-row .left strong { font-size: 12px; color: var(--ink); }
+        .dm-form-row .left span { font-size: 11px; color: var(--text-dim); }
+        .dm-form-row .result { font-size: 11px; font-weight: 700; color: var(--accent); }
+        .dm-history-list { display: flex; flex-direction: column; gap: 10px; }
+        .dm-history-item { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+        .dm-history-item .head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 6px; }
+        .dm-history-item .date { font-size: 11px; color: var(--text-dim); }
+        .dm-history-item .winner { font-size: 12px; color: var(--ink); }
+        .dm-history-item .players { font-size: 11px; color: var(--text-dim); margin-bottom: 8px; }
+        .dm-history-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 11px; color: var(--text-dim); }
+        .dm-history-meta strong { color: var(--ink); font-weight: 600; }
+        .dm-empty-state { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 14px; color: var(--text-dim); font-size: 12px; }
 
         .dm-mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .dm-mode-card { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 15px 13px; cursor: pointer; text-align: left; }
@@ -586,6 +1200,47 @@ export default function DartMind() {
         .dm-calib-step small { display: block; color: var(--text-dim); font-size: 10.5px; margin-top: 2px; }
         .dm-camera-error { border: 1px solid rgba(226,80,74,0.4); background: rgba(226,80,74,0.08); color: #F09A95; border-radius: 6px; padding: 9px 10px; font-size: 11px; line-height: 1.4; margin-bottom: 10px; }
         .dm-camera-tip { text-align: center; color: var(--text-dim); font-size: 10.5px; line-height: 1.4; margin-top: 10px; }
+        .dm-score-option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+        .dm-score-option-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px 14px; text-align: left; cursor: pointer; color: inherit; }
+        .dm-score-option-card .t { font-family: 'Bebas Neue', sans-serif; font-size: 21px; color: var(--ink); }
+        .dm-score-option-card .s { font-size: 11px; color: var(--text-dim); margin-top: 6px; line-height: 1.4; }
+        .dm-score-option-card.active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+        .dm-player-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .dm-player-row input { flex: 1; }
+        .dm-mini-btn { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 8px 10px; font-size: 11px; cursor: pointer; }
+        .dm-player-summary { background: linear-gradient(135deg, #0D1A12, #090F0B); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+        .dm-player-summary-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+        .dm-player-summary-name { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+        .dm-player-summary-score { font-family: 'Bebas Neue', sans-serif; font-size: 42px; color: var(--ink); line-height: 1; }
+        .dm-player-summary-meta { font-size: 12px; color: var(--text-dim); }
+        .dm-player-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+        .dm-player-pill { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+        .dm-player-pill.active { border-color: var(--accent); background: rgba(63,224,122,0.06); }
+        .dm-player-pill .n { font-size: 11px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dm-player-pill .r { font-family: 'Bebas Neue', sans-serif; font-size: 24px; color: var(--ink); line-height: 1.05; }
+        .dm-leg-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; }
+        .dm-leg-card .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 11px; color: var(--text-dim); }
+        .dm-leg-card .value { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--ink); margin-top: 4px; }
+        .dm-dart-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+        .dm-dart-slot { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; min-height: 64px; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 8px; text-align: center; }
+        .dm-dart-slot.filled { border-color: var(--accent); background: rgba(63,224,122,0.06); }
+        .dm-dart-slot .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+        .dm-dart-slot .value { font-family: 'Bebas Neue', sans-serif; font-size: 20px; color: var(--ink); line-height: 1.1; margin-top: 2px; }
+        .dm-legacy-note { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12px; color: var(--text-dim); }
+        .dm-live-camera-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+        .dm-live-camera-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+        .dm-live-camera-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+        .dm-inline-btn { background: none; border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 6px 8px; font-size: 11px; cursor: pointer; }
+        .dm-live-camera-frame { position: relative; height: 146px; overflow: hidden; border-radius: 8px; background: #020403; border: 1px solid var(--border-strong); }
+        .dm-live-camera-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .dm-live-camera-badge { position: absolute; left: 8px; bottom: 8px; padding: 5px 7px; border-radius: 999px; background: rgba(3, 11, 6, 0.7); border: 1px solid rgba(63,224,122,0.5); color: var(--accent); font-size: 10px; font-weight: 600; }
+        .dm-live-camera-dot { position: absolute; width: 17px; height: 17px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.85); background: rgba(227,63,63,0.9); transform: translate(-50%, -50%); box-shadow: 0 0 0 3px rgba(227,63,63,0.25); z-index: 2; }
+        .dm-live-camera-dot::after { content: attr(data-label); position: absolute; left: 50%; top: -5px; transform: translate(-50%, -100%); background: rgba(3,11,6,0.9); color: var(--ink); border-radius: 999px; border: 1px solid rgba(63,224,122,0.5); padding: 2px 5px; font-size: 9px; white-space: nowrap; }
+        .dm-live-camera-note { font-size: 10.5px; color: var(--text-dim); line-height: 1.4; margin-top: 8px; }
+        .dm-proposed-score { margin-top: 10px; border: 1px solid var(--border); background: var(--panel-2); border-radius: 8px; padding: 10px 12px; }
+        .dm-proposed-score .label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+        .dm-proposed-score .value { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--ink); line-height: 1; margin-top: 4px; }
+        .dm-proposed-score .meta { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
 
         .dm-scoreheads { display: flex; gap: 10px; margin-bottom: 12px; }
         .dm-scorehead { flex: 1; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; }
@@ -628,10 +1283,10 @@ export default function DartMind() {
 
         {screen === "login" && (
           <>
-            <Header title="Dark Mind" />
+            <Header title="Dart Zone" />
             <div className="dm-body">
               <div className="dm-hero">
-                <img src="/assets/dartmind-hero.png" alt="Dark Mind darts experience" />
+                <img src="./assets/dartmind-hero.png" alt="Dark Mind darts experience" />
                 <div className="dm-hero-overlay" />
                 <div className="dm-hero-copy"><div className="dm-hero-kicker">DARK MIND</div><div className="dm-hero-title">PLAY. IMPROVE. COMPETE.</div><div className="dm-hero-sub">Your darts. Your data. Your game.</div></div>
               </div>
@@ -660,10 +1315,10 @@ export default function DartMind() {
 
         {screen === "home" && profile && (
           <>
-            <Header title="Dark Mind" showProfile />
+            <Header title="Dart Zone" showProfile />
             <div className="dm-body">
               <div className="dm-home-banner">
-                <div><div className="dm-banner-kicker">DARK MIND</div><div className="dm-banner-title">LET'S THROW.</div><div className="dm-banner-sub">Camera scoring is coming to your setup.</div></div>
+                <div><div className="dm-banner-kicker">DART ZONE</div><div className="dm-banner-title">LET'S THROW.</div><div className="dm-banner-sub">Choose manual or Liv scoring for your setup.</div></div>
                 <div className="dm-banner-board"><MiniBoard board={board} /></div>
               </div>
               <div className="dm-dash-head">
@@ -685,6 +1340,11 @@ export default function DartMind() {
                 <div><div className="t">Play game</div><div className="s">Choose a game mode</div></div>
                 <div className="chev">&rsaquo;</div>
               </button>
+              <button className="dm-menu-row" onClick={() => setScreen("localSetup")}>
+                <div className="ico"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 12 L6 9 L8 11 L13 6" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" /><circle cx="4" cy="5" r="1.3" fill="currentColor" /><circle cx="12" cy="11" r="1.3" fill="currentColor" /></svg></div>
+                <div><div className="t">Local multiplayer</div><div className="s">Set up a face-to-face match</div></div>
+                <div className="chev">&rsaquo;</div>
+              </button>
               <button className="dm-menu-row" onClick={() => setScreen("trainingSoon")}>
                 <div className="ico"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 13 L14 3" stroke="currentColor" strokeWidth="1.3" fill="none" /><path d="M2 13 L4 13.6 L1.4 14.6 Z" fill="currentColor" /></svg></div>
                 <div><div className="t">Training mode</div><div className="s">Improve your skills</div></div>
@@ -698,6 +1358,11 @@ export default function DartMind() {
               <button className="dm-menu-row" onClick={() => setScreen("stats")}>
                 <div className="ico"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 13 V8 M8 13 V4 M13 13 V10" stroke="currentColor" strokeWidth="1.4" fill="none" strokeLinecap="round" /></svg></div>
                 <div><div className="t">Stats and progress</div><div className="s">Track your journey</div></div>
+                <div className="chev">&rsaquo;</div>
+              </button>
+              <button className="dm-menu-row" onClick={() => setScreen("history")}>
+                <div className="ico"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M4 4 L12 4 L12 13 L4 13 Z" stroke="currentColor" strokeWidth="1.3" fill="none" /><path d="M6 7 H10 M6 9 H10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" /></svg></div>
+                <div><div className="t">Game history</div><div className="s">Review recent matches</div></div>
                 <div className="chev">&rsaquo;</div>
               </button>
               <button className="dm-menu-row" onClick={() => setScreen("challenges")} style={{ marginBottom: 0 }}>
@@ -718,17 +1383,97 @@ export default function DartMind() {
                 <div className="dm-tab">Training</div>
                 <div className="dm-tab">All</div>
               </div>
-              <div className="dm-mode-grid">
-                {MODE_TILES.map((m) => (
-                  <div
-                    key={m.key}
-                    className={"dm-mode-card" + (m.playable ? "" : " soon")}
-                    onClick={m.playable ? () => startLocalGame(m.key) : undefined}
-                  >
-                    <div className="t">{m.label}</div>
-                    <div className="s">{m.playable ? m.desc : "Coming soon"}</div>
+              {pendingMode ? (
+                <>
+                  <div className="dm-h1">Choose scoring</div>
+                  <div className="dm-sub">{pendingMode === "301" ? "301" : "501"} can be played with a live camera or traditional manual tap scoring.</div>
+                  <div className="dm-score-option-grid">
+                    {SCORE_OPTIONS.map((option) => (
+                      <button
+                        key={option.key}
+                        className={"dm-score-option-card" + (gameConfig?.scoringType === option.key ? " active" : "")}
+                        onClick={() => startLocalGame(pendingMode, option.key)}
+                      >
+                        <div className="t">{option.label}</div>
+                        <div className="s">{option.desc}</div>
+                      </button>
+                    ))}
                   </div>
+                  <button className="dm-ghost-btn" style={{ marginTop: 16 }} onClick={() => setPendingMode(null)}>Back to modes</button>
+                </>
+              ) : (
+                <div className="dm-mode-grid">
+                  {MODE_TILES.map((m) => (
+                    <div
+                      key={m.key}
+                      className={"dm-mode-card" + (m.playable ? "" : " soon")}
+                      onClick={m.playable ? () => setPendingMode(m.key) : undefined}
+                    >
+                      <div className="t">{m.label}</div>
+                      <div className="s">{m.playable ? m.desc : "Coming soon"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {screen === "localSetup" && (
+          <>
+            <Header title="Local multiplayer" onBack={() => setScreen("home")} />
+            <div className="dm-body">
+              <div className="dm-h1">Set up the game</div>
+              <div className="dm-sub">Add players, choose the game mode and scoring method, then start a local match.</div>
+
+              <div className="dm-field-label">Game mode</div>
+              <div className="dm-score-option-grid" style={{ marginTop: 0, marginBottom: 16 }}>
+                {[301, 501].map((mode) => (
+                  <button
+                    key={mode}
+                    className={"dm-score-option-card" + (localGameMode === mode ? " active" : "")}
+                    onClick={() => setLocalGameMode(mode)}
+                  >
+                    <div className="t">{mode}</div>
+                    <div className="s">{mode === 301 ? "Fast paced" : "Classic single or double out"}</div>
+                  </button>
                 ))}
+              </div>
+
+              <div className="dm-field-label">Scoring method</div>
+              <div className="dm-score-option-grid" style={{ marginTop: 0, marginBottom: 16 }}>
+                {LOCAL_SCORING_OPTIONS.map((option) => (
+                  <button
+                    key={option.key}
+                    className={"dm-score-option-card" + (localScoringType === option.key ? " active" : "")}
+                    onClick={() => setLocalScoringType(option.key)}
+                  >
+                    <div className="t">{option.label}</div>
+                    <div className="s">{option.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="dm-field-label">Players</div>
+              {localPlayers.map((player, index) => (
+                <div key={index} className="dm-player-row">
+                  <input
+                    className="dm-input"
+                    value={player}
+                    onChange={(e) => updateLocalPlayer(index, e.target.value)}
+                    maxLength={20}
+                  />
+                  {localPlayers.length > 1 && (
+                    <button className="dm-mini-btn" onClick={() => removeLocalPlayer(index)} aria-label={`Remove ${player}`}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8, marginBottom: 18 }}>
+                <button className="dm-ghost-btn" onClick={addLocalPlayer} disabled={localPlayers.length >= 8}>Add player</button>
+                <button className="dm-primary-btn" style={{ marginTop: 0, flex: 1 }} onClick={startLocalMultiplayerGame}>Start game</button>
               </div>
             </div>
           </>
@@ -752,14 +1497,46 @@ export default function DartMind() {
                 <div className="dm-bigavatar2">{initials(profile.name)}</div>
                 <div className="dm-profile-name">{profile.name}</div>
               </div>
-              <div className="dm-statgrid2">
-                <div className="dm-statcard"><div className="n">{profile.gamesPlayed}</div><div className="l">games played</div></div>
-                <div className="dm-statcard"><div className="n">{winRate}%</div><div className="l">win rate</div></div>
-                <div className="dm-statcard"><div className="n">{avg.toFixed(1)}</div><div className="l">3-dart average</div></div>
-                <div className="dm-statcard"><div className="n">{profile.bestCheckout}</div><div className="l">highest checkout</div></div>
+
+              <div className="dm-stats-grid">
+                <div className="dm-stats-card">
+                  <div className="label">Career totals</div>
+                  <div className="value">{statsStore.players?.[profile.name]?.gamesPlayed || profile.gamesPlayed || 0}</div>
+                </div>
+                <div className="dm-stats-card">
+                  <div className="label">Wins / Losses</div>
+                  <div className="value">{statsStore.players?.[profile.name]?.wins || 0} / {statsStore.players?.[profile.name]?.losses || 0}</div>
+                </div>
+                <div className="dm-stats-card">
+                  <div className="label">Legs won</div>
+                  <div className="value">{statsStore.players?.[profile.name]?.legsWon || 0}</div>
+                </div>
+                <div className="dm-stats-card">
+                  <div className="label">Best checkout</div>
+                  <div className="value">{statsStore.players?.[profile.name]?.highestCheckout || profile.bestCheckout || 0}</div>
+                </div>
               </div>
+
               <div className="dm-trend-box">
-                <div className="dm-trend-label">Average trend (last {(profile.history || []).length} games)</div>
+                <div className="dm-trend-label">Recent form</div>
+                <div className="dm-stats-list">
+                  <div className="dm-form-row">
+                    <div className="left"><strong>3-dart average</strong><span>{formatAverage(statsStore.players?.[profile.name]?.totalDarts ? (statsStore.players[profile.name].totalPoints / statsStore.players[profile.name].totalDarts) * 3 : avg)}</span></div>
+                    <div className="result">{formatAverage(statsStore.players?.[profile.name]?.totalDarts ? (statsStore.players[profile.name].totalPoints / statsStore.players[profile.name].totalDarts) * 3 : avg)}</div>
+                  </div>
+                  <div className="dm-form-row">
+                    <div className="left"><strong>First 9 average</strong><span>{formatAverage(statsStore.players?.[profile.name]?.firstNineDarts ? statsStore.players[profile.name].firstNinePoints / statsStore.players[profile.name].firstNineDarts : 0)}</span></div>
+                    <div className="result">{formatAverage(statsStore.players?.[profile.name]?.firstNineDarts ? statsStore.players[profile.name].firstNinePoints / statsStore.players[profile.name].firstNineDarts : 0)}</div>
+                  </div>
+                  <div className="dm-form-row">
+                    <div className="left"><strong>Checkout %</strong><span>{formatPercent(statsStore.players?.[profile.name]?.checkoutAttempts ? (statsStore.players[profile.name].checkoutHits / statsStore.players[profile.name].checkoutAttempts) * 100 : 0)}</span></div>
+                    <div className="result">{formatPercent(statsStore.players?.[profile.name]?.checkoutAttempts ? (statsStore.players[profile.name].checkoutHits / statsStore.players[profile.name].checkoutAttempts) * 100 : 0)}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="dm-trend-box">
+                <div className="dm-trend-label">Last 10 games</div>
                 {(profile.history || []).length >= 2 ? (
                   <svg viewBox="0 0 280 60" width="100%" height="60">
                     {(() => {
@@ -776,7 +1553,61 @@ export default function DartMind() {
                   <div className="dm-trend-empty">Play a few games to see your trend.</div>
                 )}
               </div>
+
+              <div className="dm-trend-box">
+                <div className="dm-trend-label">Best performances</div>
+                <div className="dm-stats-list">
+                  <div className="dm-form-row">
+                    <div className="left"><strong>180s</strong><span>{statsStore.players?.[profile.name]?.total180s || 0}</span></div>
+                    <div className="result">{statsStore.players?.[profile.name]?.total180s || 0}</div>
+                  </div>
+                  <div className="dm-form-row">
+                    <div className="left"><strong>140+</strong><span>{statsStore.players?.[profile.name]?.total140Plus || 0}</span></div>
+                    <div className="result">{statsStore.players?.[profile.name]?.total140Plus || 0}</div>
+                  </div>
+                  <div className="dm-form-row">
+                    <div className="left"><strong>100+</strong><span>{statsStore.players?.[profile.name]?.total100Plus || 0}</span></div>
+                    <div className="result">{statsStore.players?.[profile.name]?.total100Plus || 0}</div>
+                  </div>
+                  <div className="dm-form-row">
+                    <div className="left"><strong>Best leg</strong><span>{statsStore.players?.[profile.name]?.bestLegDarts ?? "—"} darts</span></div>
+                    <div className="result">{statsStore.players?.[profile.name]?.bestLegDarts ?? "—"}</div>
+                  </div>
+                </div>
+              </div>
+
               <button className="dm-ghost-btn" onClick={handleLogOut}>Log out</button>
+            </div>
+          </>
+        )}
+
+        {screen === "history" && (
+          <>
+            <Header title="Game history" onBack={() => setScreen("home")} />
+            <div className="dm-body">
+              {statsStore.games.length === 0 ? (
+                <div className="dm-empty-state">No completed games yet. Finish a 301 or 501 game to add history.</div>
+              ) : (
+                <div className="dm-history-list">
+                  {statsStore.games.map((game) => (
+                    <div key={game.id} className="dm-history-item">
+                      <div className="head">
+                        <div className="date">{formatShortDate(game.date)}</div>
+                        <div className="winner">{game.winnerName || "Winner"}</div>
+                      </div>
+                      <div className="players">{game.players.map((p) => p.name).join(" • ")}</div>
+                      <div className="dm-history-meta">
+                        <div><strong>Game</strong> {game.gameType}</div>
+                        <div><strong>Avg</strong> {formatAverage(game.players[0]?.average || 0)}</div>
+                        <div><strong>Checkout</strong> {game.finishValue || 0}</div>
+                        <div><strong>180s</strong> {game.players.reduce((sum, p) => sum + (p.total180s || 0), 0)}</div>
+                        <div><strong>Winner</strong> {game.winnerName}</div>
+                        <div><strong>Result</strong> {game.result}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -866,7 +1697,10 @@ export default function DartMind() {
               {calibrated ? (
                 <>
                   <div className="dm-calib-ok">✓ Board calibrated and ready</div>
-                  <button className="dm-primary-btn" onClick={beginGame}>Start game</button>
+                  <div className="dm-turn-actions" style={{ marginBottom: 8 }}>
+                    <button className="dm-ghost-btn" onClick={() => { setCalibrated(false); setCalibrationStep(0); setCalibrationPoints([]); }}>Recalibrate</button>
+                    <button className="dm-primary-btn" style={{ marginTop: 0 }} onClick={beginGame}>Start game</button>
+                  </div>
                 </>
               ) : (
                 <button className="dm-primary-btn" onClick={runCalibration} disabled={!cameraReady || calibrationStep < 2 || calibrating}>
@@ -882,18 +1716,73 @@ export default function DartMind() {
           <>
             <Header title={gameConfig.mode} onBack={() => setScreen("home")} />
             <div className="dm-body dm-relative">
-              <div className="dm-scoreheads">
-                <div className="dm-scorehead" style={{ borderColor: turnIndex === 0 ? "#3FE07A" : "#1E2B22" }}>
-                  <div className="name">{players[0].name}</div>
-                  <div className="rem">{turnIndex === 0 ? liveRemainingForCurrent : players[0].remaining}</div>
+              <div className="dm-player-summary">
+                <div className="dm-player-summary-head">
+                  <div className="dm-player-summary-name">Current player</div>
+                  <div className="dm-player-summary-meta">Visit {visitNumber}</div>
                 </div>
-                <div className="dm-scorehead" style={{ borderColor: turnIndex === 1 ? "#D7DEDA" : "#1E2B22" }}>
-                  <div className="name">{players[1].name}</div>
-                  <div className="rem">{turnIndex === 1 ? liveRemainingForCurrent : players[1].remaining}</div>
-                </div>
+                <div className="dm-player-summary-score">{currentPlayer?.remaining ?? 0}</div>
+                <div className="dm-player-summary-meta">{currentPlayer?.name}</div>
               </div>
-              <div className="dm-turnlabel">{turnIndex === 0 ? "Your turn" : players[1].name + "'s turn"}</div>
+
+              <div className="dm-player-list">
+                {players.map((player, index) => (
+                  <div key={player.name + index} className={"dm-player-pill" + (turnIndex === index ? " active" : "")}>
+                    <div className="n">{player.name}</div>
+                    <div className="r">{player.remaining}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="dm-leg-card">
+                <div className="top">
+                  <span>Current leg</span>
+                  <span>{turnThrows.length}/3 darts</span>
+                </div>
+                <div className="value">{turnSoFarValue}</div>
+              </div>
+
+              <div className="dm-dart-slots">
+                {[0, 1, 2].map((slot) => {
+                  const throwItem = turnThrows[slot];
+                  return (
+                    <div key={slot} className={"dm-dart-slot" + (throwItem ? " filled" : "")}>
+                      <div className="label">Dart {slot + 1}</div>
+                      <div className="value">{throwItem ? throwItem.label : "-"}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="dm-checkout">{checkout ? "Checkout: " + checkout.join(" \u00b7 ") : ""}</div>
+              {gameConfig?.scoringType === "liv" && (
+                <div className="dm-live-camera-panel">
+                  <div className="dm-live-camera-head">
+                    <div className="dm-live-camera-label">Liv camera</div>
+                    <button className="dm-inline-btn" onClick={() => setScreen("calibrate")}>Recalibrate</button>
+                  </div>
+                  <div className="dm-live-camera-frame">
+                    <video ref={videoRef} className="dm-live-camera-video" playsInline muted autoPlay />
+                    {detectedPoint && (
+                      <div
+                        className="dm-live-camera-dot"
+                        data-label={detectedPoint.label}
+                        style={{ left: (detectedPoint.x / 100) * 100 + "%", top: (detectedPoint.y / 100) * 100 + "%" }}
+                      />
+                    )}
+                    <div className="dm-live-camera-badge">Calibration active</div>
+                  </div>
+                  {pendingScore && (
+                    <div className="dm-proposed-score">
+                      <div className="label">Detected impact</div>
+                      <div className="value">{pendingScore.label} · {pendingScore.value}</div>
+                      <div className="meta">Tap confirm to send this dart into the live game.</div>
+                      <button className="dm-primary-btn" style={{ marginTop: 10 }} onClick={confirmDetectedThrow}>Confirm</button>
+                    </div>
+                  )}
+                  <div className="dm-live-camera-note">Liv scoring keeps the calibrated camera visible while you play. The app now captures a clean reference frame before each dart, detects a likely dart object, shows the predicted impact point, and waits for your confirmation before sending the score to 501/301.</div>
+                </div>
+              )}
               <div className="dm-board-holder">
                 <svg
                   ref={boardRef}
@@ -904,9 +1793,9 @@ export default function DartMind() {
                 >
                   <circle cx={cx} cy={cy} r={RAD.missOuter} fill="#1a1d22" stroke="#1E2B22" strokeWidth="1" onClick={(e) => handleBoardClick(e, "Miss", 0, false)} />
                   {board.wedges.map((w) => (
-                    <path key={w.key} d={w.d} fill={w.fill} stroke="#05070a" strokeWidth="0.75" onClick={(e) => handleBoardClick(e, w.key, w.value, w.isDouble)} />
+                    <path key={w.key} d={w.d} fill={w.fill} stroke="#05070a" strokeWidth="0.75" onClick={(e) => handleBoardClick(e, w.label || w.key, w.value, w.isDouble)} />
                   ))}
-                  <circle cx={cx} cy={cy} r={RAD.bullOuter} fill="#1f7a48" stroke="#05070a" strokeWidth="0.75" onClick={(e) => handleBoardClick(e, "Bull", 25, false)} />
+                  <circle cx={cx} cy={cy} r={RAD.bullOuter} fill="#1f7a48" stroke="#05070a" strokeWidth="0.75" onClick={(e) => handleBoardClick(e, "25 / Outer Bull", 25, false)} />
                   <circle cx={cx} cy={cy} r={RAD.bullInner} fill="#b1332c" stroke="#05070a" strokeWidth="0.75" onClick={(e) => handleBoardClick(e, "D-Bull", 50, true)} />
                   {board.labels.map((l) => (
                     <text key={l.num} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="middle" fontSize="13" fontFamily="Inter" fontWeight="500" fill="#B9C0C9">{l.num}</text>
@@ -925,10 +1814,14 @@ export default function DartMind() {
                 <div className="dm-lastturn-quality">{bustPending ? "No score this turn" : qualityLabel(turnSoFarValue)}</div>
                 <div className="dm-lastturn-rem">Remaining: {bustPending ? currentPlayer.remaining : liveRemainingForCurrent}</div>
                 <div className="dm-turn-actions">
-                  <button className="dm-ghost-btn" onClick={handleUndo} disabled={turnThrows.length === 0}>Undo</button>
+                  <button className="dm-ghost-btn" onClick={handleUndo} disabled={turnThrows.length === 0}>Undo last dart</button>
                   <button className="dm-ghost-btn" onClick={handleMissButton} disabled={bustPending || turnThrows.length >= 3}>Miss</button>
                   <button className="dm-primary-btn" style={{ marginTop: 0 }} onClick={handleNextPlayer} disabled={turnThrows.length === 0 && !bustPending}>Next player</button>
                 </div>
+              </div>
+
+              <div className="dm-turn-actions" style={{ marginBottom: 12 }}>
+                <button className="dm-ghost-btn" onClick={() => setScreen("home")}>Finish / Exit</button>
               </div>
 
               {flash === "180" && (
@@ -938,7 +1831,7 @@ export default function DartMind() {
               )}
               {gameOver && (
                 <div className="dm-overlay">
-                  <div className="dm-gameover-title">{gameOver.winnerIdx === 0 ? "Game shot!" : players[1].name + " wins"}</div>
+                  <div className="dm-gameover-title">{gameOver.winnerIdx === 0 ? "Game shot!" : players[gameOver.winnerIdx]?.name + " wins"}</div>
                   <div className="dm-gameover-sub">{gameOver.winnerIdx === 0 ? "Checked out on " + gameOver.finishValue : "Better luck next leg"}</div>
                   <div className="dm-gameover-actions">
                     <button className="dm-ghost-btn" onClick={() => setScreen("home")}>Home</button>
@@ -966,3 +1859,4 @@ function MiniBoard(props) {
     </svg>
   );
 }
+
