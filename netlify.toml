@@ -1,0 +1,15 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Dark Mind is a single-page app with no client-side routing yet (all
+# navigation is in-memory React state), so no history-fallback redirect
+# is required today. If real URL-based routing is added later, add:
+#
+# [[redirects]]
+#   from = "/*"
+#   to = "/index.html"
+#   status = 200
