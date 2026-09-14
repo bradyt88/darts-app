@@ -62,7 +62,7 @@ const LOBBY = [
 ];
 
 const MODE_TILES = [
-  { key: "501", label: "501", desc: "Classic single or double out", playable: true },
+  { key: "501", label: "501", desc: "Classic 501, double out", playable: true },
   { key: "301", label: "301", desc: "Fast paced game", playable: true },
   { key: "cricket", label: "Cricket", desc: "Mark and close", playable: false },
   { key: "clock", label: "Around the clock", desc: "Hit each number in order", playable: false },
@@ -308,6 +308,7 @@ export default function DartMind() {
   const [user180s, setUser180s] = useState(0);
   const [visitNumber, setVisitNumber] = useState(1);
   const [challengeTab, setChallengeTab] = useState("daily");
+  const [modeTab, setModeTab] = useState("popular");
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
   const [cameraStarted, setCameraStarted] = useState(false);
@@ -638,11 +639,19 @@ export default function DartMind() {
     const turnSoFar = sumThrows(turnThrows);
     const liveRemaining = committedRemaining - turnSoFar;
     const newLive = liveRemaining - throwObj.value;
-    const newTurnThrows = [...turnThrows, throwObj];
     const playerLog = matchLogsRef.current[pIdx] || createMatchLog(players[pIdx].name);
     const isBust = isBustThrow({ currentRemaining: committedRemaining, turnThrows, nextThrow: throwObj });
+    const dartsLeftBeforeThrow = 3 - turnThrows.length;
+    const wasOnCheckout = Boolean(findCheckout(liveRemaining, dartsLeftBeforeThrow));
+    const isFinishAttemptDart = Boolean(throwObj.isDouble || throwObj.value === 25 || throwObj.value === 50);
+    const countedCheckoutAttempt = wasOnCheckout && isFinishAttemptDart;
+    const recordedThrow = { ...throwObj, countedCheckoutAttempt };
+    const newTurnThrows = [...turnThrows, recordedThrow];
 
-    playerLog.darts.push(throwObj.value);
+    playerLog.darts.push(recordedThrow.value);
+    if (countedCheckoutAttempt) {
+      playerLog.checkoutAttempts = (playerLog.checkoutAttempts || 0) + 1;
+    }
 
     const updatedPlayers = [...players];
     updatedPlayers[pIdx] = {
@@ -734,6 +743,21 @@ export default function DartMind() {
 
   function handleUndo() {
     if (turnThrows.length === 0 || gameOver) return;
+    const pIdx = turnIndex;
+    const undoneThrow = turnThrows[turnThrows.length - 1];
+    const playerLog = matchLogsRef.current[pIdx];
+    if (playerLog) {
+      if (playerLog.darts.length > 0) playerLog.darts.pop();
+      if (undoneThrow?.countedCheckoutAttempt) {
+        playerLog.checkoutAttempts = Math.max(0, (playerLog.checkoutAttempts || 0) - 1);
+      }
+    }
+    setPlayers((current) => {
+      if (!current) return current;
+      const list = [...current];
+      list[pIdx] = { ...list[pIdx], dartsThrown: Math.max(0, list[pIdx].dartsThrown - 1) };
+      return list;
+    });
     setTurnThrows(turnThrows.slice(0, -1));
     setBustPending(false);
   }
@@ -1052,7 +1076,6 @@ export default function DartMind() {
   return (
     <div className="dm-root">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600&display=swap');
         .dm-root {
           --bg-a: #04150c;
           --bg-b: #050806;
@@ -1090,6 +1113,8 @@ export default function DartMind() {
         .dm-primary-btn:disabled { opacity: 0.35; cursor: default; }
         .dm-ghost-btn { background: none; color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 11px; font-size: 13.5px; cursor: pointer; width: 100%; }
         .dm-ghost-btn:hover { border-color: var(--border-strong); color: var(--ink); }
+        .dm-ghost-btn:disabled, .dm-mini-btn:disabled { opacity: 0.35; cursor: default; }
+        .dm-ghost-btn:disabled:hover { border-color: var(--border); color: var(--text); }
         .dm-or { text-align: center; font-size: 11px; color: var(--text-dim); margin: 16px 0 10px; }
         .dm-stack { display: flex; flex-direction: column; gap: 8px; }
         .dm-link { text-align: center; font-size: 13px; color: var(--text-dim); margin-top: 14px; background: none; border: none; cursor: pointer; text-decoration: underline; }
@@ -1114,7 +1139,7 @@ export default function DartMind() {
         .dm-menu-row .chev { margin-left: auto; color: var(--text-dim); }
 
         .dm-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
-        .dm-tab { flex: 1; text-align: center; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 12.5px; color: var(--text-dim); cursor: pointer; background: var(--panel); }
+        .dm-tab { flex: 1; text-align: center; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 12.5px; color: var(--text-dim); cursor: pointer; background: var(--panel); font-family: inherit; margin: 0; }
         .dm-tab.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
         .dm-stats-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 18px; }
         .dm-stats-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
@@ -1352,7 +1377,7 @@ export default function DartMind() {
               </button>
               <button className="dm-menu-row" onClick={() => setScreen("lobby")}>
                 <div className="ico"><svg width="16" height="16" viewBox="0 0 16 16"><circle cx="6" cy="6" r="2.6" stroke="currentColor" strokeWidth="1.3" fill="none" /><circle cx="11" cy="9" r="2.2" stroke="currentColor" strokeWidth="1.3" fill="none" /></svg></div>
-                <div><div className="t">Play online</div><div className="s">Challenge players worldwide</div></div>
+                <div><div className="t">Play online</div><div className="s">Demo matchmaking — real online play is coming soon</div></div>
                 <div className="chev">&rsaquo;</div>
               </button>
               <button className="dm-menu-row" onClick={() => setScreen("stats")}>
@@ -1379,9 +1404,9 @@ export default function DartMind() {
             <Header title="Choose a game" onBack={() => setScreen("home")} />
             <div className="dm-body">
               <div className="dm-tabs">
-                <div className="dm-tab active">Popular</div>
-                <div className="dm-tab">Training</div>
-                <div className="dm-tab">All</div>
+                <button type="button" className={"dm-tab" + (modeTab === "popular" ? " active" : "")} onClick={() => setModeTab("popular")}>Popular</button>
+                <button type="button" className={"dm-tab" + (modeTab === "training" ? " active" : "")} onClick={() => setModeTab("training")}>Training</button>
+                <button type="button" className={"dm-tab" + (modeTab === "all" ? " active" : "")} onClick={() => setModeTab("all")}>All</button>
               </div>
               {pendingMode ? (
                 <>
@@ -1435,7 +1460,7 @@ export default function DartMind() {
                     onClick={() => setLocalGameMode(mode)}
                   >
                     <div className="t">{mode}</div>
-                    <div className="s">{mode === 301 ? "Fast paced" : "Classic single or double out"}</div>
+                    <div className="s">{mode === 301 ? "Fast paced, double out" : "Classic 501, double out"}</div>
                   </button>
                 ))}
               </div>
@@ -1617,9 +1642,9 @@ export default function DartMind() {
             <Header title="Challenges" onBack={() => setScreen("home")} />
             <div className="dm-body">
               <div className="dm-tabs">
-                <div className={"dm-tab" + (challengeTab === "daily" ? " active" : "")} onClick={() => setChallengeTab("daily")}>Daily</div>
-                <div className={"dm-tab" + (challengeTab === "weekly" ? " active" : "")} onClick={() => setChallengeTab("weekly")}>Weekly</div>
-                <div className={"dm-tab" + (challengeTab === "special" ? " active" : "")} onClick={() => setChallengeTab("special")}>Special</div>
+                <button type="button" className={"dm-tab" + (challengeTab === "daily" ? " active" : "")} onClick={() => setChallengeTab("daily")}>Daily</button>
+                <button type="button" className={"dm-tab" + (challengeTab === "weekly" ? " active" : "")} onClick={() => setChallengeTab("weekly")}>Weekly</button>
+                <button type="button" className={"dm-tab" + (challengeTab === "special" ? " active" : "")} onClick={() => setChallengeTab("special")}>Special</button>
               </div>
               {challengeTab === "daily" ? (
                 <>
@@ -1651,7 +1676,8 @@ export default function DartMind() {
               ) : (
                 <>
                   <button className="dm-online-btn" style={{ marginBottom: 20 }} onClick={startOnlineSearch}>Quick match</button>
-                  <div className="dm-field-label">Players online</div>
+                  <div className="dm-empty-state" style={{ marginBottom: 16 }}>Real online multiplayer isn't built yet — this screen is a demo that pairs you with a sample opponent so you can preview the flow.</div>
+                  <div className="dm-field-label">Players online (sample data)</div>
                   {LOBBY.map((p) => (
                     <div className="dm-lobby-row" key={p.name}>
                       <div className="dot" />
