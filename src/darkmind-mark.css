@@ -1,0 +1,42 @@
+/* Small visual-only brand mark for the header. */
+.dm-mark {
+  width: 30px !important;
+  height: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  border-radius: 50% !important;
+  position: relative !important;
+}
+
+.dm-mark svg {
+  display: none !important;
+}
+
+.dm-mark::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #67f58b;
+  background:
+    radial-gradient(circle at center, #67f58b 0 2px, transparent 2.5px),
+    radial-gradient(circle at center, transparent 0 6px, rgba(103,245,139,0.8) 6.5px 7.5px, transparent 8px),
+    radial-gradient(circle at center, #071b10 0 100%);
+  box-shadow: 0 0 14px rgba(103,245,139,0.2);
+}
+
+.dm-mark::after {
+  content: "";
+  position: absolute;
+  width: 15px;
+  height: 1.5px;
+  background: #dfffe7;
+  transform: rotate(-43deg);
+  transform-origin: right center;
+  right: 1px;
+  top: 7px;
+  border-radius: 2px;
+  opacity: 0.9;
+}
