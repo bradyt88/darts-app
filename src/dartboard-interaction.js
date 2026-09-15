@@ -72,15 +72,33 @@ function attachZoom(svg) {
   svg.style.transformOrigin = "50% 50%";
   svg.style.willChange = "transform";
   stateBySvg.set(svg, { scale:1, pinchDistance:0 });
-  svg.addEventListener("pointerdown", e => { pointers.set(e.pointerId,{clientX:e.clientX,clientY:e.clientY}); svg.setPointerCapture?.(e.pointerId); });
+
+  // Do NOT use setPointerCapture here. The React scorer relies on the
+  // pointer/click completing on the actual dartboard wedge that was tapped.
+  // Capturing the pointer on the parent SVG retargets the subsequent click
+  // away from the wedge, which makes manual scoring appear completely dead.
+  svg.addEventListener("pointerdown", e => {
+    pointers.set(e.pointerId,{clientX:e.clientX,clientY:e.clientY,svg});
+  });
+
   svg.addEventListener("pointermove", e => {
-    if(!pointers.has(e.pointerId)) return; pointers.set(e.pointerId,{clientX:e.clientX,clientY:e.clientY}); if(pointers.size<2) return;
-    const pts=Array.from(pointers.values()), state=stateBySvg.get(svg), d=distance(pts[0],pts[1]);
+    const active = pointers.get(e.pointerId);
+    if(!active || active.svg !== svg) return;
+    pointers.set(e.pointerId,{clientX:e.clientX,clientY:e.clientY,svg});
+    if(pointers.size<2) return;
+    const pts=Array.from(pointers.values()).filter(p => p.svg === svg), state=stateBySvg.get(svg), d=distance(pts[0],pts[1]);
+    if(pts.length<2) return;
     if(!state.pinchDistance) state.pinchDistance=d;
     if(state.pinchDistance>0) { const ratio=d/state.pinchDistance; if(Math.abs(ratio-1)>0.002) { applyZoom(svg,state.scale*ratio); state.pinchDistance=d; } }
     e.preventDefault();
   },{passive:false});
-  const end=e=>{ pointers.delete(e.pointerId); if(pointers.size<2){const s=stateBySvg.get(svg);if(s)s.pinchDistance=0;} };
+
+  const end=e=>{
+    const active = pointers.get(e.pointerId);
+    if(!active || active.svg !== svg) return;
+    pointers.delete(e.pointerId);
+    const s=stateBySvg.get(svg); if(s && Array.from(pointers.values()).filter(p => p.svg === svg).length<2) s.pinchDistance=0;
+  };
   svg.addEventListener("pointerup",end); svg.addEventListener("pointercancel",end);
   svg.addEventListener("wheel",e=>{ if(!e.ctrlKey&&Math.abs(e.deltaY)<2)return; e.preventDefault(); const s=stateBySvg.get(svg); applyZoom(svg,s.scale-Math.sign(e.deltaY)*ZOOM_STEP); },{passive:false});
   svg.addEventListener("dblclick",e=>{e.preventDefault();const s=stateBySvg.get(svg);applyZoom(svg,s.scale>1.05?1:1.35);});
