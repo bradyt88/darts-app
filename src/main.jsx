@@ -9,6 +9,7 @@ import "./dartzone-home.css";
 import "./dartzone-flight.css";
 import "./dartzone-celebration.css";
 import "./dartzone-test-visuals.css";
+import "./dartboard-interaction.js";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
