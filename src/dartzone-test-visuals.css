@@ -26,7 +26,36 @@
   position:relative;
 }
 
-/* Give the stats screen the same visual language without touching its data. */
+/* Manual dartboard: realistic presentation + board-only pinch zoom. */
+.dm-board-holder{
+  position:relative !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  overflow:hidden !important;
+  touch-action:pan-y !important;
+  border-radius:50% !important;
+  padding:8px !important;
+  margin:4px auto 10px !important;
+  background:radial-gradient(circle,rgba(30,70,47,.16) 0%,rgba(1,7,4,0) 68%) !important;
+}
+.dm-board-holder > svg{
+  flex:0 0 auto !important;
+  transform-origin:50% 50% !important;
+  border-radius:50% !important;
+  background:radial-gradient(circle at 42% 36%,rgba(255,255,255,.06),rgba(1,5,3,.18) 58%,rgba(0,0,0,.34) 100%) !important;
+  box-shadow:0 12px 28px rgba(0,0,0,.46),inset 0 0 0 1px rgba(190,220,199,.08) !important;
+}
+.dm-board-holder > svg text{letter-spacing:.02em !important;}
+
+/* Give the number ring enough contrast on small screens. */
+.dm-board-holder > svg text{
+  paint-order:stroke !important;
+  stroke:rgba(0,0,0,.9) !important;
+  stroke-width:2.5px !important;
+}
+
+/* Keep the stats screen in the same visual language without touching its data. */
 .dm-body:has(.dm-profile-head){
   position:relative;
   overflow:hidden;
@@ -45,3 +74,8 @@
 }
 
 .dm-body:has(.dm-profile-head) > *{position:relative}
+
+@media (max-width:640px){
+  .dm-board-holder{min-height:292px !important;padding:4px !important;}
+  .dm-board-holder > svg{width:268px !important;height:268px !important;}
+}
