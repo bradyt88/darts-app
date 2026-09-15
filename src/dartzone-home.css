@@ -2,49 +2,33 @@
 
 .dm-title,
 .dm-banner-title,
-.dm-hero-title {
-  font-family: 'Permanent Marker', 'Bebas Neue', sans-serif !important;
-}
+.dm-hero-title { font-family:'Permanent Marker','Bebas Neue',sans-serif !important; }
+.dm-title { font-size:25px !important; letter-spacing:.035em !important; color:#f4faf5 !important; text-transform:uppercase !important; }
 
-.dm-title {
-  font-size: 25px !important;
-  letter-spacing: 0.035em !important;
-  color: #f4faf5 !important;
-  text-transform: uppercase !important;
-}
-
-/* 501 / 301 player summary: realistic dart artwork, visual only. */
+/* 501 / 301 player summary card — visual only. */
 .dm-player-summary {
-  position: relative !important;
-  overflow: hidden !important;
-  isolation: isolate !important;
-  border-radius: 16px !important;
-  border: 1px solid rgba(103,245,139,0.38) !important;
-  background:
-    linear-gradient(90deg, rgba(1,7,4,0.97) 0%, rgba(1,7,4,0.88) 42%, rgba(1,7,4,0.55) 72%, rgba(1,7,4,0.20) 100%),
-    var(--dz-flight) center right / cover no-repeat !important;
-  box-shadow: 0 12px 30px rgba(0,0,0,0.28) !important;
+  position:relative !important;
+  overflow:hidden !important;
+  isolation:isolate !important;
+  border-radius:16px !important;
+  border:1px solid rgba(103,245,139,.38) !important;
+  background:linear-gradient(90deg,rgba(1,7,4,.97) 0%,rgba(1,7,4,.88) 42%,rgba(1,7,4,.55) 72%,rgba(1,7,4,.2) 100%),var(--dz-flight) center right/cover no-repeat !important;
+  box-shadow:0 12px 30px rgba(0,0,0,.28) !important;
 }
+.dm-player-summary > * { position:relative !important; z-index:1 !important; }
 
-.dm-player-summary > * {
-  position: relative !important;
-  z-index: 1 !important;
-}
-
+/* Keep the locked realistic home hero. */
 .dm-home-banner {
-  min-height: 190px !important;
-  padding: 22px !important;
-  display: flex !important;
-  align-items: flex-end !important;
-  position: relative !important;
-  overflow: hidden !important;
-  border-radius: 18px !important;
-  border: 1px solid rgba(103,245,139,0.55) !important;
-  background:
-    linear-gradient(90deg, rgba(1,7,4,0.98) 0%, rgba(1,7,4,0.92) 34%, rgba(1,7,4,0.45) 58%, rgba(1,7,4,0.08) 100%),
-    var(--dz-flight) center right / cover no-repeat !important;
+  min-height:190px !important;
+  padding:22px !important;
+  display:flex !important;
+  align-items:flex-end !important;
+  position:relative !important;
+  overflow:hidden !important;
+  border-radius:18px !important;
+  border:1px solid rgba(103,245,139,.55) !important;
+  background:linear-gradient(90deg,rgba(1,7,4,.98) 0%,rgba(1,7,4,.92) 34%,rgba(1,7,4,.45) 58%,rgba(1,7,4,.08) 100%),var(--dz-flight) center right/cover no-repeat !important;
 }
-
 .dm-home-banner .dm-banner-board { display:none !important; }
 .dm-home-banner::before { content:""; position:absolute; inset:0; background:linear-gradient(90deg,rgba(1,7,4,.72),rgba(1,7,4,.18)); z-index:0; pointer-events:none; }
 .dm-home-banner > * { position:relative; z-index:1; }
@@ -61,9 +45,4 @@
 .dm-menu-row .t { color:#f4faf5 !important; }
 .dm-menu-row .s { color:rgba(244,250,245,.56) !important; }
 .dm-menu-row .chev { color:rgba(244,250,245,.42) !important; }
-
-@media (max-width: 640px) {
-  .dm-home-banner { min-height:176px !important; padding:18px !important; }
-  .dm-statgrid2 { gap:8px !important; }
-  .dm-player-summary { background-position:center right !important; }
-}
+@media (max-width:640px){.dm-home-banner{min-height:176px !important;padding:18px !important}.dm-statgrid2{gap:8px !important}.dm-player-summary{background-position:center right !important}}
