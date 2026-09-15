@@ -720,6 +720,12 @@ export default function DartMind() {
     scheduleReferenceCapture();
   }
 
+  function dismissDetectedThrow() {
+    setPendingScore(null);
+    setDetectedPoint(null);
+    scheduleReferenceCapture();
+  }
+
   function handleDetectedThrow(point) {
     if (!savedCalibration || !videoRef.current || !players || !gameConfig || gameConfig.scoringType !== "liv") return;
     const frameWidth = videoRef.current.videoWidth || videoRef.current.clientWidth || 360;
@@ -1210,7 +1216,7 @@ export default function DartMind() {
         .dm-camera-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; color: var(--text); gap: 5px; font-size: 13px; }
         .dm-camera-placeholder span { color: var(--text-dim); font-size: 10px; }
         .dm-camera-icon { width: 42px; height: 42px; border: 1px solid var(--accent); color: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 4px; }
-        .camera-guide-circle { position: absolute; width: 74%; aspect-ratio: 1; left: 13%; top: 13%; border: 2px dashed rgba(63,224,122,0.8); border-radius: 50%; box-shadow: 0 0 0 999px rgba(0,0,0,0.10); pointer-events: none; }
+        .camera-guide-circle { position: absolute; width: 74%; aspect-ratio: 1; left: 50%; top: 50%; transform: translate(-50%, -50%); border: 2px dashed rgba(63,224,122,0.8); border-radius: 50%; box-shadow: 0 0 0 999px rgba(0,0,0,0.10); pointer-events: none; }
         .camera-guide-crosshair { position: absolute; width: 22px; height: 22px; left: calc(50% - 11px); top: calc(50% - 11px); border: 1px solid var(--accent); border-radius: 50%; pointer-events: none; }
         .camera-guide-crosshair:before, .camera-guide-crosshair:after { content: ''; position: absolute; background: var(--accent); opacity: 0.8; }
         .camera-guide-crosshair:before { width: 38px; height: 1px; left: -9px; top: 10px; }
@@ -1733,7 +1739,7 @@ export default function DartMind() {
                   {calibrating ? "Locking calibration..." : "Calibrate board"}
                 </button>
               )}
-              <div className="dm-camera-tip">💡 Best setup: camera roughly level with the board, as square-on as possible, with the full board visible and even lighting.</div>
+              <div className="dm-camera-tip">💡 Best setup: mount the phone on a stand — it must stay completely still. Get the board level, square-on and evenly lit; any camera movement will be read as a dart.</div>
             </div>
           </>
         )}
@@ -1803,7 +1809,10 @@ export default function DartMind() {
                       <div className="label">Detected impact</div>
                       <div className="value">{pendingScore.label} · {pendingScore.value}</div>
                       <div className="meta">Tap confirm to send this dart into the live game.</div>
-                      <button className="dm-primary-btn" style={{ marginTop: 10 }} onClick={confirmDetectedThrow}>Confirm</button>
+                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                        <button className="dm-primary-btn" onClick={confirmDetectedThrow}>Confirm</button>
+                        <button className="dm-ghost-btn" onClick={dismissDetectedThrow}>Not a dart</button>
+                      </div>
                     </div>
                   )}
                   <div className="dm-live-camera-note">Liv scoring keeps the calibrated camera visible while you play. The app now captures a clean reference frame before each dart, detects a likely dart object, shows the predicted impact point, and waits for your confirmation before sending the score to 501/301.</div>
