@@ -63,7 +63,7 @@
 .dm-menu-row .chev { color:rgba(244,250,245,.42) !important; }
 
 @media (max-width: 640px) {
-  .dm-home-banner { min-height: 176px !important; padding:18px !important; }
+  .dm-home-banner { min-height:176px !important; padding:18px !important; }
   .dm-statgrid2 { gap:8px !important; }
   .dm-player-summary { background-position:center right !important; }
 }
