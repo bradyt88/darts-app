@@ -8,6 +8,7 @@ import "./darkmind-mark.css";
 import "./dartzone-home.css";
 import "./dartzone-flight.css";
 import "./dartzone-celebration.css";
+import "./dartzone-test-visuals.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
