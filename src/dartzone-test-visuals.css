@@ -1,0 +1,47 @@
+/* Dart Zone test visuals — presentation only. */
+
+/* Stop the portrait game shell from zooming/cropping the dart artwork. */
+.dm-body:has(.dm-board-holder),
+.dm-body:has(.dm-live-camera-panel){
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+}
+
+.dm-body:has(.dm-board-holder)::before,
+.dm-body:has(.dm-live-camera-panel)::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-2;
+  background:
+    linear-gradient(180deg,rgba(1,7,4,.76),rgba(1,7,4,.58) 48%,rgba(1,7,4,.88)),
+    var(--dz-flight) center/100% 100% no-repeat;
+  filter:saturate(1.05) contrast(1.03);
+  opacity:.9;
+}
+
+.dm-body:has(.dm-board-holder) > *,
+.dm-body:has(.dm-live-camera-panel) > *{
+  position:relative;
+}
+
+/* Give the stats screen the same visual language without touching its data. */
+.dm-body:has(.dm-profile-head){
+  position:relative;
+  overflow:hidden;
+  isolation:isolate;
+}
+
+.dm-body:has(.dm-profile-head)::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-2;
+  background:
+    linear-gradient(180deg,rgba(1,7,4,.86),rgba(1,7,4,.66) 42%,rgba(1,7,4,.94)),
+    var(--dz-flight) center/100% 100% no-repeat;
+  opacity:.72;
+}
+
+.dm-body:has(.dm-profile-head) > *{position:relative}
