@@ -20,7 +20,6 @@ function addBoardArtwork(svg) {
 
   const ns = "http://www.w3.org/2000/svg";
   const defs = document.createElementNS(ns, "defs");
-
   const gradients = [
     ["dm-sisal-dark", "#111713", "#242a26"],
     ["dm-sisal-light", "#b7b2a2", "#e6e0cd"],
@@ -68,8 +67,10 @@ function addBoardArtwork(svg) {
   const paths = Array.from(svg.querySelectorAll("path"));
   paths.forEach((path, index) => {
     const slot = index % 4;
+    const segmentIndex = Math.floor(index / 4);
+    const accent = segmentIndex % 2 === 0 ? "url(#dm-red)" : "url(#dm-green)";
     if (slot === 0 || slot === 2) {
-      path.setAttribute("fill", index % 2 === 0 ? "url(#dm-red)" : "url(#dm-green)");
+      path.setAttribute("fill", accent);
     } else {
       path.setAttribute("fill", slot === 1 ? "url(#dm-sisal-dark)" : "url(#dm-sisal-light)");
     }
@@ -139,17 +140,13 @@ function applyZoom(svg, scale) {
   svg.setAttribute("aria-label", `Manual dartboard, ${Math.round(next * 100)} percent zoom`);
 }
 
-function resetZoom(svg) {
-  applyZoom(svg, 1);
-}
-
 function attachZoom(svg) {
   if (svg.dataset.dmZoomReady === "1") return;
   svg.dataset.dmZoomReady = "1";
   svg.style.touchAction = "none";
   svg.style.transformOrigin = "50% 50%";
   svg.style.willChange = "transform";
-  stateBySvg.set(svg, { scale: 1, lastTap: 0, tapTimer: null });
+  stateBySvg.set(svg, { scale: 1, pinchDistance: 0 });
 
   svg.addEventListener("pointerdown", (event) => {
     pointers.set(event.pointerId, { clientX: event.clientX, clientY: event.clientY });
