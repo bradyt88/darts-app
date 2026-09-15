@@ -26,29 +26,40 @@ test("segment values are correct for 1-20", () => {
 test("bull values are correct", () => {
   assert.equal(outerBull.value, 25);
   assert.equal(innerBull.value, 50);
+  assert.equal(outerBull.isBull, true);
   assert.equal(innerBull.isDouble, true);
 });
 
-test("checkout suggestions include direct outer bull finishes", () => {
-  assert.deepEqual(findCheckout(25, 1), ["25 / Outer Bull"]);
+test("double-out checkout only accepts doubles or inner bull", () => {
+  assert.equal(findCheckout(25, 1), null);
   assert.deepEqual(findCheckout(50, 1), ["D-Bull"]);
+  assert.deepEqual(findCheckout(40, 1), ["D20"]);
+  assert.deepEqual(findCheckout(14, 1), ["D7"]);
 });
 
-test("two-dart and three-dart checkouts still work", () => {
-  assert.deepEqual(findCheckout(40, 1), ["D20"]);
+test("checkout ranking prefers simple professional routes", () => {
+  assert.deepEqual(findCheckout(60, 2), ["S20", "D20"]);
+  assert.deepEqual(findCheckout(100, 2), ["T20", "D20"]);
+  assert.deepEqual(findCheckout(170, 3), ["T20", "T20", "D-Bull"]);
+  assert.deepEqual(findCheckout(167, 3), ["T20", "T19", "D-Bull"]);
+  assert.deepEqual(findCheckout(164, 3), ["T20", "T18", "D-Bull"]);
+  assert.deepEqual(findCheckout(161, 3), ["T20", "T17", "D-Bull"]);
+  assert.deepEqual(findCheckout(160, 3), ["T20", "T20", "D20"]);
+  assert.deepEqual(findCheckout(158, 3), ["T20", "T20", "D19"]);
+  assert.deepEqual(findCheckout(157, 3), ["T20", "T19", "D20"]);
+  assert.deepEqual(findCheckout(147, 3), ["T20", "T17", "D18"]);
+});
 
-  const checkout90 = findCheckout(90, 2);
-  assert.ok(checkout90);
-  assert.equal(checkout90.length, 2);
-  assert.equal(checkout90[0].startsWith("T"), true);
-  assert.equal(checkout90[1].startsWith("D"), true);
+test("one dart route is preferred when available", () => {
+  assert.deepEqual(findCheckout(32, 3), ["D16"]);
+  assert.deepEqual(findCheckout(50, 3), ["D-Bull"]);
+  assert.deepEqual(findCheckout(100, 3), ["T20", "D20"]);
+});
 
-  const checkout170 = findCheckout(170, 3);
-  assert.ok(checkout170);
-  assert.equal(checkout170.length, 3);
-  assert.deepEqual(checkout170[0], "T20");
-  assert.deepEqual(checkout170[1], "T20");
-  assert.deepEqual(checkout170[2], "D-Bull");
+test("known impossible three-dart checkouts return no route", () => {
+  for (const score of [159, 162, 163, 165, 166, 168, 169]) {
+    assert.equal(findCheckout(score, 3), null, `expected ${score} to be impossible`);
+  }
 });
 
 test("busts are detected for less than zero and exact one", () => {
@@ -66,14 +77,17 @@ test("busts are detected for less than zero and exact one", () => {
   );
 });
 
-test("single dart cannot finish on a non-double or non-bull", () => {
+test("double-out rejects an outer bull finish", () => {
+  assert.equal(
+    isBustThrow({ currentRemaining: 25, turnThrows: [], nextThrow: { label: "25 / Outer Bull", value: 25, isBull: true } }),
+    true
+  );
+});
+
+test("single dart cannot finish on a plain single", () => {
   assert.equal(
     isBustThrow({ currentRemaining: 20, turnThrows: [], nextThrow: { label: "S20", value: 20 } }),
     true
-  );
-  assert.equal(
-    isBustThrow({ currentRemaining: 25, turnThrows: [], nextThrow: { label: "25 / Outer Bull", value: 25 } }),
-    false
   );
 });
 
