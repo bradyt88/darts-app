@@ -5,6 +5,7 @@ import ErrorBoundary from "./ErrorBoundary.jsx";
 import "./darkmind-visuals.css";
 import "./darkmind-mark.css";
 import "./dartzone-home.css";
+import "./dartzone-flight.css";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
