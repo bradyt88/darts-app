@@ -1,0 +1,417 @@
+/* Dark Mind visual layer — presentation only. Gameplay logic remains untouched. */
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0 !important;
+  background:
+    radial-gradient(circle at 50% -10%, rgba(63, 224, 122, 0.14), transparent 34%),
+    radial-gradient(circle at 0% 60%, rgba(18, 68, 42, 0.18), transparent 32%),
+    #020604 !important;
+}
+
+button,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dm-root {
+  --bg-a: #071b10 !important;
+  --bg-b: #020604 !important;
+  --panel: rgba(8, 20, 13, 0.88) !important;
+  --panel-2: rgba(12, 29, 19, 0.92) !important;
+  --border: rgba(94, 151, 112, 0.22) !important;
+  --border-strong: rgba(63, 224, 122, 0.42) !important;
+  --ink: #f3faf5 !important;
+  --text: #a9b9ae !important;
+  --text-dim: #68796e !important;
+  --accent: #67f58b !important;
+  --accent-strong: #42d96c !important;
+  --accent-ink: #031008 !important;
+  --err: #ff5e5e !important;
+  position: relative !important;
+  min-height: 100vh !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(46, 157, 83, 0.12), transparent 35%),
+    linear-gradient(180deg, rgba(2, 8, 5, 0.96), rgba(2, 6, 4, 0.99)) !important;
+}
+
+.dm-root::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.18;
+  background-image: radial-gradient(rgba(255,255,255,0.22) 0.6px, transparent 0.6px);
+  background-size: 5px 5px;
+  mix-blend-mode: screen;
+}
+
+.dm-shell {
+  position: relative !important;
+  z-index: 1 !important;
+  max-width: 460px !important;
+  min-height: 100vh !important;
+  border-left: 1px solid rgba(90, 150, 108, 0.16) !important;
+  border-right: 1px solid rgba(90, 150, 108, 0.16) !important;
+  background: linear-gradient(180deg, rgba(4, 12, 7, 0.76), rgba(2, 7, 4, 0.96)) !important;
+  box-shadow: 0 0 80px rgba(0, 0, 0, 0.45) !important;
+}
+
+.dm-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 20 !important;
+  min-height: 58px !important;
+  box-sizing: border-box !important;
+  padding: 10px 16px !important;
+  background: rgba(3, 11, 6, 0.82) !important;
+  backdrop-filter: blur(18px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(130%) !important;
+  border-bottom: 1px solid rgba(90, 150, 108, 0.2) !important;
+}
+
+.dm-title {
+  font-size: 23px !important;
+  letter-spacing: 0.08em !important;
+  text-shadow: 0 0 20px rgba(103, 245, 139, 0.16) !important;
+}
+
+.dm-body {
+  padding: 18px 16px 30px !important;
+}
+
+.dm-h1,
+.dm-hero-title,
+.dm-banner-title,
+.dm-gameover-title {
+  letter-spacing: 0.035em !important;
+}
+
+.dm-hero {
+  height: 230px !important;
+  border: 1px solid rgba(103, 245, 139, 0.28) !important;
+  border-radius: 18px !important;
+  margin-bottom: 18px !important;
+  background: #06140b !important;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.36), inset 0 0 0 1px rgba(255,255,255,0.025) !important;
+}
+
+.dm-hero img {
+  opacity: 0.9 !important;
+  filter: saturate(1.12) contrast(1.06) brightness(0.78) !important;
+  transform: scale(1.035) !important;
+}
+
+.dm-hero-overlay {
+  background:
+    linear-gradient(180deg, rgba(1, 8, 4, 0.08), rgba(1, 8, 4, 0.86)),
+    linear-gradient(90deg, rgba(1, 8, 4, 0.82), rgba(1, 8, 4, 0.18), rgba(1, 8, 4, 0.68)) !important;
+}
+
+.dm-hero-copy {
+  padding: 20px !important;
+}
+
+.dm-hero-kicker,
+.dm-banner-kicker {
+  font-size: 11px !important;
+  color: #7cff9a !important;
+  text-shadow: 0 0 16px rgba(103,245,139,0.35) !important;
+}
+
+.dm-hero-title,
+.dm-banner-title {
+  font-size: 31px !important;
+  text-shadow: 0 3px 20px rgba(0,0,0,0.55) !important;
+}
+
+.dm-hero-sub,
+.dm-banner-sub {
+  font-size: 12px !important;
+  color: #c1d0c6 !important;
+}
+
+.dm-statcard,
+.dm-stats-card,
+.dm-mode-card,
+.dm-menu-row,
+.dm-leg-card,
+.dm-dart-slot,
+.dm-lastturn,
+.dm-scorehead,
+.dm-player-pill,
+.dm-player-summary,
+.dm-trend-box,
+.dm-history-item,
+.dm-empty-state,
+.dm-chall-row,
+.dm-chall-card,
+.dm-form-row,
+.dm-calibration-card,
+.dm-live-camera-panel,
+.dm-proposed-score {
+  background: linear-gradient(145deg, rgba(12, 28, 18, 0.94), rgba(5, 15, 9, 0.94)) !important;
+  border-color: rgba(103, 160, 119, 0.2) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16) !important;
+}
+
+.dm-statcard,
+.dm-stats-card {
+  border-radius: 12px !important;
+  padding: 13px !important;
+}
+
+.dm-statcard .n,
+.dm-stats-card .value,
+.dm-player-summary-score,
+.dm-lastturn-total {
+  text-shadow: 0 0 18px rgba(255,255,255,0.08) !important;
+}
+
+.dm-menu-row {
+  border-radius: 13px !important;
+  padding: 13px !important;
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease !important;
+}
+
+.dm-menu-row:hover,
+.dm-mode-card:hover,
+.dm-score-option-card:hover,
+.dm-chall-row:hover {
+  transform: translateY(-1px) !important;
+  border-color: rgba(103, 245, 139, 0.4) !important;
+}
+
+.dm-menu-row .ico {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 10px !important;
+  background: linear-gradient(145deg, #78ff98, #35c962) !important;
+  color: #031008 !important;
+  box-shadow: 0 0 22px rgba(63,224,122,0.14) !important;
+}
+
+.dm-primary-btn {
+  min-height: 48px !important;
+  border-radius: 12px !important;
+  background: linear-gradient(135deg, #7dff9b, #43d86d) !important;
+  box-shadow: 0 10px 25px rgba(63,224,122,0.16) !important;
+}
+
+.dm-ghost-btn,
+.dm-online-btn,
+.dm-mini-btn,
+.dm-inline-btn {
+  border-radius: 10px !important;
+  background: rgba(6, 17, 10, 0.65) !important;
+}
+
+.dm-input {
+  min-height: 46px !important;
+  border-radius: 10px !important;
+  background: rgba(5, 15, 9, 0.9) !important;
+}
+
+.dm-tabs {
+  padding: 4px !important;
+  gap: 4px !important;
+  border: 1px solid rgba(103,160,119,0.15) !important;
+  border-radius: 12px !important;
+  background: rgba(3, 11, 6, 0.72) !important;
+}
+
+.dm-tab {
+  border: 0 !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+}
+
+.dm-tab.active {
+  background: linear-gradient(135deg, #78ff98, #43d86d) !important;
+  box-shadow: 0 4px 15px rgba(63,224,122,0.16) !important;
+}
+
+.dm-mode-grid {
+  gap: 12px !important;
+}
+
+.dm-mode-card {
+  position: relative !important;
+  min-height: 112px !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
+  border-radius: 14px !important;
+  padding: 15px !important;
+}
+
+.dm-mode-card::before {
+  content: "◉";
+  position: absolute;
+  right: 10px;
+  top: 5px;
+  font-size: 46px;
+  line-height: 1;
+  color: rgba(103,245,139,0.045);
+  transform: rotate(-18deg);
+  pointer-events: none;
+}
+
+.dm-mode-card .t {
+  position: relative !important;
+  z-index: 1 !important;
+  font-size: 22px !important;
+}
+
+.dm-mode-card .s {
+  position: relative !important;
+  z-index: 1 !important;
+  line-height: 1.35 !important;
+}
+
+.dm-home-banner {
+  position: relative !important;
+  min-height: 108px !important;
+  border-radius: 16px !important;
+  padding: 16px !important;
+  overflow: hidden !important;
+  background:
+    linear-gradient(90deg, rgba(3,12,7,0.97) 0%, rgba(3,12,7,0.78) 48%, rgba(3,12,7,0.34) 100%),
+    url('/darts-app/assets/dartmind-hero.png') center 56% / cover !important;
+  border-color: rgba(103,245,139,0.22) !important;
+  box-shadow: 0 18px 34px rgba(0,0,0,0.3) !important;
+}
+
+.dm-home-banner::after {
+  content: "";
+  position: absolute;
+  inset: auto -10% -45% 30%;
+  height: 150px;
+  background: radial-gradient(circle, rgba(103,245,139,0.18), transparent 65%);
+  pointer-events: none;
+}
+
+.dm-banner-board {
+  position: relative !important;
+  z-index: 1 !important;
+  width: 92px !important;
+  height: 92px !important;
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.5)) !important;
+}
+
+.dm-viewfinder.real-camera {
+  max-width: 420px !important;
+  height: 300px !important;
+  border-radius: 18px !important;
+  border-color: rgba(103,245,139,0.28) !important;
+  box-shadow: 0 18px 36px rgba(0,0,0,0.3) !important;
+}
+
+.camera-guide-circle {
+  border-color: rgba(103,245,139,0.92) !important;
+  box-shadow: 0 0 0 999px rgba(0,0,0,0.18), 0 0 28px rgba(103,245,139,0.12) !important;
+}
+
+.camera-guide-crosshair {
+  box-shadow: 0 0 16px rgba(103,245,139,0.2) !important;
+}
+
+.dm-board-holder {
+  padding: 10px !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(42,93,57,0.14), transparent 54%),
+    rgba(2,8,5,0.66) !important;
+  border: 1px solid rgba(103,160,119,0.12) !important;
+  box-shadow: inset 0 0 35px rgba(0,0,0,0.38), 0 16px 32px rgba(0,0,0,0.22) !important;
+}
+
+.dm-board-holder svg {
+  filter: drop-shadow(0 12px 18px rgba(0,0,0,0.48)) !important;
+}
+
+.dm-player-summary {
+  border-radius: 16px !important;
+  background:
+    linear-gradient(90deg, rgba(5,16,9,0.95), rgba(7,22,13,0.84)),
+    url('/darts-app/assets/dartmind-hero.png') right center / cover !important;
+}
+
+.dm-player-list {
+  gap: 10px !important;
+}
+
+.dm-player-pill {
+  border-radius: 12px !important;
+}
+
+.dm-player-pill.active,
+.dm-dart-slot.filled {
+  background: linear-gradient(145deg, rgba(25,73,40,0.8), rgba(7,25,14,0.92)) !important;
+  border-color: rgba(103,245,139,0.62) !important;
+  box-shadow: 0 0 20px rgba(63,224,122,0.08) !important;
+}
+
+.dm-lastturn {
+  border-radius: 16px !important;
+  padding: 16px !important;
+}
+
+.dm-lastturn-total {
+  font-size: 46px !important;
+}
+
+.dm-chip {
+  border-radius: 999px !important;
+  background: rgba(103,245,139,0.08) !important;
+  border-color: rgba(103,245,139,0.22) !important;
+}
+
+.dm-checkout {
+  font-weight: 700 !important;
+  text-shadow: 0 0 15px rgba(103,245,139,0.18) !important;
+}
+
+.dm-flash180 {
+  font-size: 54px !important;
+  text-shadow: 0 0 30px rgba(103,245,139,0.35) !important;
+}
+
+.dm-overlay {
+  background: rgba(1, 8, 4, 0.94) !important;
+  backdrop-filter: blur(8px) !important;
+}
+
+@media (min-width: 700px) {
+  .dm-shell {
+    margin: 18px 0 !important;
+    min-height: calc(100vh - 36px) !important;
+    border-radius: 24px !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(90,150,108,0.18) !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .dm-shell {
+    max-width: 100% !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
+  }
+
+  .dm-hero {
+    height: 215px !important;
+  }
+}
