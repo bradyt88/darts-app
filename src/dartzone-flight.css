@@ -1,0 +1,11 @@
+/* Dart Zone flight artwork — visual only. */
+:root{--dz-flight:url("data:image/jpeg;base64,REPLACE_ME");}
+.dm-hero{background:var(--dz-flight) center/cover no-repeat!important;}
+.dm-hero img{opacity:0!important;}
+.dm-home-banner{background:linear-gradient(90deg,rgba(1,7,4,.97) 0%,rgba(1,7,4,.88) 34%,rgba(1,7,4,.42) 62%,rgba(1,7,4,.10) 100%),var(--dz-flight) center/cover no-repeat!important;}
+.dm-home-banner .dm-banner-board{display:none!important;}
+.dm-overlay{background:linear-gradient(180deg,rgba(1,7,4,.68),rgba(1,7,4,.88)),var(--dz-flight) center/cover no-repeat!important;backdrop-filter:blur(1px);}
+.dm-flash180,.dm-gameover-title{position:relative;text-shadow:0 0 22px rgba(103,245,139,.55);}
+.dm-flash180:before{content:"180";display:block;font-family:'Bebas Neue',sans-serif;font-size:72px;line-height:.9;color:#67f58b;letter-spacing:.04em;margin-bottom:10px;}
+.dm-gameover-title:before{content:"GAME SHOT";display:block;font-family:'Bebas Neue',sans-serif;font-size:52px;line-height:.9;color:#67f58b;letter-spacing:.04em;margin-bottom:10px;}
+@media(max-width:560px){.dm-hero{height:190px!important}.dm-home-banner{min-height:190px!important}.dm-overlay{background-position:center!important}.dm-flash180:before{font-size:58px}.dm-gameover-title:before{font-size:44px}}
